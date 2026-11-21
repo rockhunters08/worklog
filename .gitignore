@@ -1,0 +1,8 @@
+# personal data: threads, labels, summaries, and prompt text from every transcript
+worklog.jsonl
+sessions-cache.json
+sessions-cache.json.tmp
+WORKLOG.md
+worklog.toml
+*.log
+__pycache__/

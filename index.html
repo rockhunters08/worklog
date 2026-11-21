@@ -1,0 +1,1357 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Worklog</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#12100e; --ink2:#181511; --panel:#1b1814; --panel2:#211d18;
+  --line:#2e2822; --line2:#3d352c;
+  --paper:#ece4d6; --dim:#948878; --dimmer:#6b6157;
+  --p0:#ff5c3c; --p1:#efa227; --p2:#5cbf9d; --p3:#7d8fa6;
+  --ok:#5cbf9d; --warn:#efa227; --stop:#ff5c3c;
+  /* status is its own channel: the left spine stays priority, these ride the
+     right-hand pill, so nothing is read by opacity alone */
+  --s-active:#5cbf9d; --s-blocked:#ff5c3c; --s-waiting:#efa227;
+  --s-done:#4f9fd0; --s-parked:#9b7bd8;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --serif:"Instrument Serif",Georgia,serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--ink); color:var(--paper); font-family:var(--mono);
+  font-size:13px; line-height:1.5; -webkit-font-smoothing:antialiased;
+  background-image:
+    radial-gradient(900px 500px at 12% -8%, rgba(239,162,39,.10), transparent 60%),
+    radial-gradient(700px 420px at 92% 4%, rgba(92,191,157,.07), transparent 62%);
+  background-attachment:fixed;
+}
+.grain{position:fixed;inset:0;pointer-events:none;z-index:99;opacity:.035;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");}
+::selection{background:var(--p1);color:var(--ink)}
+
+/* ---------- masthead ---------- */
+header{padding:38px 40px 0;max-width:1320px;margin:0 auto}
+.masthead{display:flex;align-items:flex-end;gap:28px;flex-wrap:wrap;
+  border-bottom:1px solid var(--line);padding-bottom:16px}
+h1{font-family:var(--serif);font-weight:400;font-size:58px;line-height:.86;margin:0;
+  letter-spacing:-.02em}
+h1 em{font-style:italic;color:var(--p1)}
+.sub{margin:0 0 6px;color:var(--dim);font-size:11px;letter-spacing:.16em;text-transform:uppercase}
+.counts{margin-left:auto;display:flex;gap:18px;align-items:flex-end}
+.count{text-align:right}
+.count b{display:block;font-family:var(--serif);font-size:30px;line-height:1;font-weight:400}
+.count span{font-size:10px;letter-spacing:.14em;color:var(--dimmer);text-transform:uppercase}
+.count.c0 b{color:var(--p0)} .count.c1 b{color:var(--p1)}
+.count.c2 b{color:var(--p2)} .count.c3 b{color:var(--p3)}
+
+/* ---------- layout ---------- */
+main{max-width:1320px;margin:0 auto;padding:22px 40px 120px;
+  display:grid;grid-template-columns:212px minmax(0,1fr);gap:34px;align-items:start}
+.rail{position:sticky;top:22px;display:flex;flex-direction:column;gap:22px;
+  max-height:calc(100vh - 44px);overflow-y:auto;padding-right:4px}
+.rail>div{flex:none}
+.rail::-webkit-scrollbar{width:6px}
+.rail::-webkit-scrollbar-thumb{background:var(--line2);border-radius:3px}
+.rail::-webkit-scrollbar-track{background:transparent}
+.rail h4{margin:0 0 8px;font-size:10px;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--dimmer);font-weight:500}
+.filters{display:flex;flex-wrap:wrap;gap:5px}
+.f{border:1px solid var(--line);background:transparent;color:var(--dim);font-family:var(--mono);
+  font-size:11px;padding:3px 8px;border-radius:2px;cursor:pointer;transition:.14s}
+.f:hover{border-color:var(--line2);color:var(--paper)}
+.f.on{background:var(--paper);border-color:var(--paper);color:var(--ink)}
+.f.on.p0{background:var(--p0);border-color:var(--p0)}
+.f.on.p1{background:var(--p1);border-color:var(--p1)}
+.f.on.p2{background:var(--p2);border-color:var(--p2)}
+.f.on.p3{background:var(--p3);border-color:var(--p3)}
+.f[data-f="status"]::before{content:"";display:inline-block;width:6px;height:6px;
+  border-radius:50%;margin-right:6px;vertical-align:middle;background:var(--line2)}
+.f[data-v="active"]::before{background:var(--s-active)}
+.f[data-v="blocked"]::before{background:var(--s-blocked)}
+.f[data-v="waiting"]::before{background:var(--s-waiting)}
+.f[data-v="done"]::before{background:var(--s-done)}
+.f[data-v="parked"]::before{background:var(--s-parked)}
+.f.on[data-f="status"]::before{background:var(--ink)}
+.sesslist{display:flex;flex-direction:column;max-height:300px;overflow-y:auto;
+  margin:0 -5px;padding:0 1px}
+.sesslist .s{flex:none;display:flex;align-items:baseline;gap:8px;width:100%;text-align:left;
+  background:none;border:none;border-radius:2px;padding:4px 5px;cursor:pointer;
+  font-family:var(--mono);font-size:11px;color:var(--dim);transition:.12s}
+.sesslist .s:hover{background:rgba(255,255,255,.045);color:var(--paper)}
+.sesslist .s.on{background:var(--p1);color:var(--ink)}
+.sesslist .s .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sesslist .s b{font-weight:400;color:var(--p1)}
+.sesslist .s.on b{color:var(--ink);opacity:.65}
+.sesslist .s .ct{font-size:9.5px;opacity:.5;flex:none}
+.sesslist::-webkit-scrollbar{width:6px}
+.sesslist::-webkit-scrollbar-thumb{background:var(--line2);border-radius:3px}
+.sesslist::-webkit-scrollbar-track{background:transparent}
+.railnone{color:var(--dimmer);font-size:11px}
+#search{width:100%;background:var(--ink2);border:1px solid var(--line);color:var(--paper);
+  font-family:var(--mono);font-size:12px;padding:7px 9px;border-radius:2px;outline:none}
+#search:focus{border-color:var(--p1)}
+.railfoot{font-size:10px;color:var(--dimmer);line-height:1.7;border-top:1px solid var(--line);
+  padding-top:12px;word-break:break-all}
+kbd{border:1px solid var(--line2);border-radius:2px;padding:0 3px;color:var(--dim)}
+
+/* ---------- quick add ---------- */
+.quickadd{border:1px solid var(--line);background:var(--panel);border-radius:3px;
+  margin-bottom:20px;transition:.18s}
+.quickadd:focus-within{border-color:var(--p1);box-shadow:0 0 0 3px rgba(239,162,39,.07)}
+.qa-top{display:flex;align-items:center;gap:10px;padding:0 14px}
+.qa-top .caret{color:var(--p1);font-size:14px}
+#qa-title{flex:1;background:transparent;border:none;outline:none;color:var(--paper);
+  font-family:var(--serif);font-size:21px;padding:13px 0}
+#qa-title::placeholder{color:var(--dimmer);font-family:var(--serif)}
+.qa-more{display:none;gap:8px;padding:0 14px 12px;flex-wrap:wrap;align-items:center;
+  border-top:1px solid var(--line);padding-top:11px;margin-top:2px}
+.quickadd.open .qa-more{display:flex}
+.qa-more input{background:var(--ink2);border:1px solid var(--line);color:var(--paper);
+  font-family:var(--mono);font-size:11px;padding:5px 8px;border-radius:2px;outline:none}
+.qa-more input:focus{border-color:var(--line2)}
+.prisel{display:flex;gap:3px}
+.prisel button{border:1px solid var(--line);background:transparent;color:var(--dim);
+  font-family:var(--mono);font-size:11px;padding:4px 9px;border-radius:2px;cursor:pointer}
+.prisel button.on[data-p="P0"]{background:var(--p0);border-color:var(--p0);color:var(--ink)}
+.prisel button.on[data-p="P1"]{background:var(--p1);border-color:var(--p1);color:var(--ink)}
+.prisel button.on[data-p="P2"]{background:var(--p2);border-color:var(--p2);color:var(--ink)}
+.prisel button.on[data-p="P3"]{background:var(--p3);border-color:var(--p3);color:var(--ink)}
+.btn{border:1px solid var(--line2);background:transparent;color:var(--paper);
+  font-family:var(--mono);font-size:11px;padding:5px 12px;border-radius:2px;cursor:pointer;
+  transition:.14s;letter-spacing:.04em}
+.btn:hover{background:var(--paper);color:var(--ink);border-color:var(--paper)}
+.btn.ghost{border-color:var(--line);color:var(--dim)}
+.btn.ghost:hover{color:var(--ink)}
+.btn.danger:hover{background:var(--stop);border-color:var(--stop);color:var(--ink)}
+
+/* ---------- view bar ---------- */
+.viewbar{display:flex;align-items:center;gap:10px;margin:0 0 18px;padding-bottom:11px;
+  border-bottom:1px solid var(--line);flex-wrap:wrap}
+.tabs{display:flex;gap:3px}
+.tabs button{border:1px solid var(--line);background:transparent;color:var(--dim);
+  font-family:var(--mono);font-size:11.5px;padding:5px 13px;border-radius:2px;cursor:pointer;
+  transition:.14s;letter-spacing:.04em}
+.tabs button:hover{color:var(--paper);border-color:var(--line2)}
+.tabs button.on{background:var(--paper);border-color:var(--paper);color:var(--ink)}
+.tabs button b{font-weight:400;opacity:.55;margin-left:6px}
+.viewbar .info{margin-left:auto;font-size:10.5px;color:var(--dimmer);letter-spacing:.06em}
+.viewbar .clr{border:1px solid var(--line);background:transparent;color:var(--p1);
+  font-family:var(--mono);font-size:10.5px;padding:4px 9px;border-radius:2px;cursor:pointer}
+.viewbar .clr:hover{background:var(--p1);color:var(--ink);border-color:var(--p1)}
+.f b{font-weight:400;opacity:.5;margin-left:5px}
+.empty a{color:var(--p1);cursor:pointer;border-bottom:1px solid rgba(239,162,39,.4)}
+.count{cursor:pointer}
+.count:hover b{opacity:.7}
+
+/* ---------- threads ---------- */
+.band{display:flex;align-items:center;gap:12px;margin:26px 0 9px}
+.band:first-child{margin-top:0}
+.band span{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--dimmer)}
+.band hr{flex:1;border:none;border-top:1px solid var(--line);margin:0}
+.thread{position:relative;border:1px solid var(--line);border-left:none;background:var(--panel);
+  border-radius:0 3px 3px 0;margin-bottom:6px;overflow:hidden;
+  animation:rise .4s cubic-bezier(.2,.7,.3,1) backwards}
+@keyframes rise{from{opacity:0;transform:translateY(7px)}}
+.thread::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--p2);
+  transition:width .16s}
+.thread:hover::before{width:6px}
+.thread[data-p="P0"]::before{background:var(--p0)}
+.thread[data-p="P1"]::before{background:var(--p1)}
+.thread[data-p="P3"]::before{background:var(--p3)}
+.thread.open{background:var(--panel2);border-color:var(--line2)}
+.thread.done .ttl,.thread.parked .ttl{color:var(--dim)}
+.row{display:flex;align-items:baseline;gap:14px;padding:11px 16px 11px 18px;cursor:pointer}
+.row:hover{background:rgba(255,255,255,.015)}
+.idc{font-size:11px;color:var(--dimmer);width:34px;flex:none;letter-spacing:.03em}
+.ttl{font-family:var(--serif);font-size:20px;line-height:1.25;flex:1;min-width:0;
+  word-break:break-word}
+.metas{display:flex;align-items:baseline;gap:7px;flex-wrap:wrap;justify-content:flex-end;
+  flex:none;max-width:52%}
+.chip{font-size:10.5px;padding:2px 7px;border-radius:2px;border:1px solid var(--line2);
+  color:var(--dim);white-space:nowrap}
+.chip.sess{color:var(--paper);border-color:var(--line2);background:var(--ink2)}
+.chip.sess b{font-weight:500;color:var(--p1)}
+.chip.who{border-style:dashed}
+.chip.tag{border:none;color:var(--dimmer);padding:2px 2px}
+.chip.hops{border:none;color:var(--dimmer);padding:2px}
+.st{font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;padding:3px 8px;
+  border-radius:2px;white-space:nowrap;font-weight:500;color:var(--ink)}
+.st.active{background:transparent;color:var(--s-active);box-shadow:inset 0 0 0 1px rgba(92,191,157,.45)}
+.st.blocked{background:var(--s-blocked)}
+.st.waiting{background:var(--s-waiting)}
+.st.done{background:var(--s-done)}
+.st.parked{background:var(--s-parked)}
+time{font-size:10px;color:var(--dimmer);white-space:nowrap;flex:none;width:76px;text-align:right}
+
+/* ---------- resume + due ---------- */
+.head{display:flex;align-items:baseline;gap:13px;flex:1;min-width:0;flex-wrap:wrap}
+.cmdchip{display:inline-flex;align-items:baseline;gap:8px;cursor:pointer;flex:none;
+  background:var(--ink);border:1px solid var(--line);border-radius:2px;padding:3px 9px;
+  font-family:var(--mono);font-size:11.5px;color:var(--dim);transition:.14s;
+  transform:translateY(-1px)}
+.cmdchip:hover{border-color:var(--p1);color:var(--paper)}
+.cmdchip i{font-style:normal;color:var(--p2)}
+.cmdchip:hover i{color:var(--p1)}
+.cmdchip .cp{font-size:9.5px;color:var(--dimmer);letter-spacing:.1em;text-transform:uppercase}
+.cmdchip:hover .cp{color:var(--p1)}
+.cmdchip.none{cursor:default;border-style:dashed;color:var(--dimmer)}
+.cmdchip.none:hover{border-color:var(--line);color:var(--dimmer)}
+.chip.acct{color:var(--p1);border-color:rgba(239,162,39,.3)}
+.chip.due{border:none;padding:2px 7px;border-radius:2px;font-weight:500;letter-spacing:.04em}
+.chip.due.overdue{background:var(--p0);color:var(--ink)}
+.chip.due.today{background:var(--p1);color:var(--ink)}
+.chip.due.upcoming{border:1px solid var(--line2);color:var(--dim);font-weight:400}
+
+.alertbar{display:flex;align-items:center;gap:12px;margin:0 0 9px}
+.alertbar span{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--p1)}
+.alertbar em{font-size:10px;color:var(--dimmer);font-style:normal;letter-spacing:.06em}
+.alertbar hr{flex:1;border:none;border-top:1px solid rgba(239,162,39,.28);margin:0}
+.alertwrap{margin-bottom:26px}
+.thread.flag{border-color:rgba(239,162,39,.35)}
+.thread.flag>.row{background:linear-gradient(90deg, rgba(239,162,39,.11), rgba(239,162,39,0) 60%)}
+.thread.flag.late{border-color:rgba(255,92,60,.4)}
+.thread.flag.late>.row{background:linear-gradient(90deg, rgba(255,92,60,.13), rgba(255,92,60,0) 60%)}
+.count.chk b{color:var(--p1)}
+.count.done b{color:var(--s-done)}
+.count.chk.late b{color:var(--p0);animation:pulse 2.2s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.45}}
+
+.duerow{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.duerow input[type=date]{color-scheme:dark;flex:1;min-width:130px}
+.duerow button{border:1px solid var(--line);background:transparent;color:var(--dim);
+  font-family:var(--mono);font-size:10.5px;padding:4px 7px;border-radius:2px;cursor:pointer}
+.duerow button:hover{color:var(--paper);border-color:var(--line2)}
+
+/* ---------- drag to reorder ---------- */
+.row{position:relative}
+.grip{position:absolute;left:5px;top:50%;transform:translateY(-50%);color:var(--line2);
+  font-size:12px;letter-spacing:-1px;opacity:0;transition:.14s;cursor:grab;
+  writing-mode:vertical-rl;line-height:1}
+.row:hover .grip{opacity:1}
+.row:active .grip{cursor:grabbing}
+.thread.dragging{opacity:.35}
+.thread.over-top{box-shadow:inset 0 2px 0 var(--p1)}
+.thread.over-bot{box-shadow:inset 0 -2px 0 var(--p1)}
+.band.over span{color:var(--p1)}
+.band.over hr{border-top-color:var(--p1)}
+.dragging-on .row{cursor:grabbing}
+
+/* ---------- detail ---------- */
+.detail{display:none;position:relative;padding:4px 18px 18px 18px;border-top:1px dashed var(--line2);
+  grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:30px}
+.thread.open .detail{display:grid}
+.log{padding-top:14px}
+.log h4,.ctl h4{margin:0 0 10px;font-size:10px;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--dimmer);font-weight:500}
+.entries{border-left:1px solid var(--line2);padding-left:16px;margin:0 0 12px;
+  display:flex;flex-direction:column;gap:11px;max-height:340px;overflow:auto}
+.entry{position:relative}
+.entry::before{content:"";position:absolute;left:-20px;top:6px;width:5px;height:5px;
+  border-radius:50%;background:var(--line2)}
+.entry.hop::before{background:var(--p1)}
+.entry .when{font-size:10px;color:var(--dimmer);letter-spacing:.04em}
+.entry .what{font-size:12.5px;color:var(--paper);white-space:pre-wrap;word-break:break-word}
+.entry.hop .what{color:var(--p1)}
+.entry .src{font-size:10px;color:var(--dimmer)}
+.entry .when{display:flex;align-items:baseline;gap:8px}
+.lineacts{display:flex;gap:7px;opacity:.4;transition:.12s}
+.entry:hover .lineacts{opacity:1}
+.entry:hover .when>span:first-child{color:var(--dim)}
+.lineacts button{border:none;background:none;padding:0;cursor:pointer;font-family:var(--mono);
+  font-size:10px;color:var(--dimmer);letter-spacing:.06em}
+.lineacts button:hover{color:var(--p1)}
+.lineacts button.x:hover{color:var(--stop)}
+.entry .edited{color:var(--dimmer);font-size:9.5px;letter-spacing:.06em}
+.entry.editing{background:rgba(255,255,255,.02);margin:-4px -8px;padding:4px 8px;border-radius:2px}
+.entry.editing textarea{display:block;width:100%;background:var(--ink);
+  border:1px solid var(--p1);color:var(--paper);font-family:var(--mono);font-size:12.5px;
+  line-height:1.55;padding:9px 10px;border-radius:2px;outline:none;margin:5px 0 7px;
+  resize:vertical;min-height:23.3em;overflow:hidden}
+.entry.editing textarea.oneline{min-height:2.6em}
+.entry.editing .ebtns{display:flex;gap:6px;align-items:center}
+.entry.editing .ebtns button{font-size:10px;padding:3px 9px}
+.entry.editing .ebtns .hint{font-size:9.5px;color:var(--dimmer);letter-spacing:.06em}
+/* an open editor is not going to live inside a 340px scroll box */
+.entries:has(.editing){max-height:none;overflow:visible}
+.noteform{display:flex;gap:7px;margin-top:4px}
+.noteform input{flex:1;background:var(--ink2);border:1px solid var(--line);color:var(--paper);
+  font-family:var(--mono);font-size:12px;padding:7px 9px;border-radius:2px;outline:none}
+.noteform input:focus{border-color:var(--p1)}
+.ctl{padding-top:14px;display:flex;flex-direction:column;gap:14px}
+.ctl .grp{display:flex;flex-direction:column;gap:5px}
+.ctl label{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dimmer)}
+.ctl input{background:var(--ink2);border:1px solid var(--line);color:var(--paper);
+  font-family:var(--mono);font-size:11.5px;padding:6px 8px;border-radius:2px;outline:none;width:100%}
+.ctl input:focus{border-color:var(--line2)}
+.seg{display:flex;flex-wrap:wrap;gap:3px}
+.seg button{border:1px solid var(--line);background:transparent;color:var(--dim);
+  font-family:var(--mono);font-size:10.5px;padding:4px 8px;border-radius:2px;cursor:pointer;
+  transition:.12s;letter-spacing:.06em}
+.seg button:hover{color:var(--paper);border-color:var(--line2)}
+.seg button.on{background:var(--paper);border-color:var(--paper);color:var(--ink)}
+.seg button.on[data-p="P0"]{background:var(--p0);border-color:var(--p0)}
+.seg button.on[data-p="P1"]{background:var(--p1);border-color:var(--p1)}
+.seg button.on[data-p="P2"]{background:var(--p2);border-color:var(--p2)}
+.seg button.on[data-p="P3"]{background:var(--p3);border-color:var(--p3)}
+.acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:2px}
+.empty{color:var(--dimmer);font-size:12px;padding:40px 0;text-align:center;
+  font-family:var(--serif);font-size:19px}
+
+.closer{position:absolute;right:14px;top:12px;border:1px solid var(--line);background:transparent;
+  color:var(--dim);font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+  padding:4px 9px;border-radius:2px;cursor:pointer;z-index:1}
+.closer:hover{color:var(--ink);background:var(--paper);border-color:var(--paper)}
+.ctl{padding-top:34px}
+
+/* ---------- toast ---------- */
+#toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,16px);opacity:0;
+  background:var(--paper);color:var(--ink);padding:8px 16px;border-radius:2px;font-size:11.5px;
+  letter-spacing:.04em;pointer-events:none;transition:.22s;z-index:100;max-width:80vw}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+@media (max-width:900px){
+  header,main{padding-left:18px;padding-right:18px}
+  main{grid-template-columns:1fr;gap:20px}
+  .rail{position:static;flex-direction:row;flex-wrap:wrap;gap:16px}
+  .rail>div{min-width:150px}
+  .detail{grid-template-columns:1fr;gap:18px}
+  .metas{max-width:100%;justify-content:flex-start}
+  .row{flex-wrap:wrap}
+  h1{font-size:42px}
+}
+
+/* ---------- modes: threads | sessions ---------- */
+.modes{display:flex;gap:3px;margin-top:10px}
+.modes button{border:1px solid var(--line);background:transparent;color:var(--dim);
+  font-family:var(--mono);font-size:11px;padding:4px 12px;border-radius:2px;cursor:pointer;
+  transition:.14s;letter-spacing:.12em;text-transform:uppercase}
+.modes button:hover{color:var(--paper);border-color:var(--line2)}
+.modes button.on{background:var(--p1);border-color:var(--p1);color:var(--ink)}
+body[data-mode="sessions"] .threads-only{display:none !important}
+body[data-mode="threads"] .sessions-only{display:none !important}
+.count.lab b{color:var(--p1)} .count.unlab b{color:var(--dim)} .count.tot b{color:var(--paper)}
+.count.act b{color:var(--s-active)}
+.thread.sess.live{border-color:rgba(92,191,157,.35)}
+
+/* ---------- sessions catalog ---------- */
+.thread.sess::before{background:var(--line2)}
+.thread.sess.labelled::before{background:var(--p1)}
+.thread.sess .ttl{font-size:18px}
+.thread.sess.unlabelled .ttl{color:var(--dim)}
+.chip.warn{color:var(--p0);border-color:rgba(255,92,60,.45)}
+.chip.link{color:var(--s-done);border-color:rgba(79,159,208,.45);cursor:pointer}
+.chip.link:hover{background:var(--s-done);color:var(--ink);border-color:var(--s-done)}
+.chip.proj{color:var(--p2);border-color:rgba(92,191,157,.35)}
+.chip.name{color:var(--dim);border-style:dashed}
+.first{font-size:12.5px;white-space:pre-wrap;word-break:break-word;color:var(--paper);
+  max-height:240px;overflow:auto;border-left:1px solid var(--line2);padding-left:16px;margin:0 0 16px}
+.snip{font-size:12px;color:var(--dim);border-left:1px solid var(--p1);padding-left:16px;
+  margin:0 0 16px;word-break:break-word}
+.snip mark{background:rgba(239,162,39,.3);color:var(--paper);padding:0 2px}
+.about{font-size:11px;color:var(--dimmer);line-height:1.85;word-break:break-all}
+.about b{color:var(--dim);font-weight:400}
+.about i{font-style:normal;color:var(--p1)}
+.ctl textarea{background:var(--ink2);border:1px solid var(--line);color:var(--paper);
+  font-family:var(--mono);font-size:11.5px;padding:6px 8px;border-radius:2px;outline:none;
+  width:100%;min-height:4.5em;resize:vertical;line-height:1.5}
+.ctl textarea:focus{border-color:var(--line2)}
+.cmdstack{display:flex;flex-direction:column;gap:5px;align-items:flex-start}
+.cmdstack .cmdchip{max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.cmdstack .cmdchip i{display:inline}
+.viewbar .scan{font-size:10.5px;color:var(--p1);letter-spacing:.06em;animation:pulse 1.6s ease-in-out infinite}
+.viewbar .rescan{border:1px solid var(--line);background:transparent;color:var(--dim);
+  font-family:var(--mono);font-size:10.5px;padding:4px 9px;border-radius:2px;cursor:pointer}
+.viewbar .rescan:hover{color:var(--paper);border-color:var(--line2)}
+.band.month span{color:var(--dim)}
+#sf-proj .f,#sf-repo .f{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.thread.sess .head{flex-direction:column;align-items:flex-start;gap:5px;min-width:0}
+.thread.sess .head .top{display:flex;align-items:baseline;gap:13px;flex-wrap:wrap;width:100%}
+.thread.sess .head .top .ttl{flex:1;min-width:200px}
+.thread.sess .metas{max-width:100%;justify-content:flex-start;margin-top:2px}
+.sum{font-size:11.5px;color:var(--dim);line-height:1.5;margin:0;max-width:72ch;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.thread.open .sum{display:none}
+.chip.auto{border:none;color:var(--p2);padding:2px 2px;opacity:.85}
+.chip.ppl{border-style:dashed;color:var(--dim)}
+.outcome{font-size:12.5px;color:var(--paper);border-left:1px solid var(--p2);padding-left:16px;margin:0 0 16px}
+.outcome b{display:block;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--p2);font-weight:500;margin-bottom:3px}
+.summ{font-size:12.5px;color:var(--paper);line-height:1.6;margin:0 0 14px;max-width:70ch}
+.links{display:flex;flex-wrap:wrap;gap:5px;margin:0 0 14px}
+.links a{font-size:10.5px;color:var(--s-done);border:1px solid rgba(79,159,208,.4);border-radius:2px;
+  padding:2px 7px;text-decoration:none}
+.links a:hover{background:var(--s-done);color:var(--ink)}
+.links span{font-size:10.5px;color:var(--dim);border:1px solid var(--line2);border-radius:2px;padding:2px 7px}
+.sortsel{display:flex;gap:3px;align-items:center}
+.sortsel em{font-size:10px;color:var(--dimmer);letter-spacing:.14em;text-transform:uppercase;font-style:normal;margin-right:3px}
+.sortsel button{border:1px solid var(--line);background:transparent;color:var(--dim);font-family:var(--mono);
+  font-size:10.5px;padding:4px 8px;border-radius:2px;cursor:pointer}
+.sortsel button:hover{color:var(--paper);border-color:var(--line2)}
+.sortsel button.on{background:var(--paper);border-color:var(--paper);color:var(--ink)}
+.details-toggle{font-size:10px;color:var(--dimmer);letter-spacing:.14em;text-transform:uppercase;cursor:pointer;
+  border:none;background:none;font-family:var(--mono);padding:0;margin:0 0 10px}
+.details-toggle:hover{color:var(--p1)}
+</style>
+</head>
+<body>
+<div class="grain"></div>
+
+<header>
+  <div class="masthead">
+    <div>
+      <h1>Work<em>log</em></h1>
+      <p class="sub">threads across accounts &amp; sessions</p>
+      <nav class="modes" id="modes">
+        <button data-mode="threads">threads</button>
+        <button data-mode="sessions">sessions</button>
+      </nav>
+    </div>
+    <div class="counts" id="counts"></div>
+  </div>
+</header>
+
+<main>
+  <aside class="rail">
+    <div><input id="search" placeholder="search  /" autocomplete="off"></div>
+    <div class="threads-only"><h4>Priority</h4><div class="filters" id="f-prio"></div></div>
+    <div class="threads-only"><h4>Status</h4><div class="filters" id="f-status"></div></div>
+    <div class="threads-only"><h4>People</h4><div class="filters" id="f-people"></div></div>
+    <div class="threads-only"><h4>Sessions</h4><div class="sesslist" id="f-sess"></div></div>
+    <div class="sessions-only"><h4>Show</h4><div class="filters" id="sf-show"></div></div>
+    <div class="sessions-only"><h4>Tags</h4><div class="filters" id="sf-tag"></div></div>
+    <div class="sessions-only"><h4>People</h4><div class="filters" id="sf-ppl"></div></div>
+    <div class="sessions-only"><h4>Repos</h4><div class="filters" id="sf-repo"></div></div>
+    <div class="sessions-only"><h4>Project</h4><div class="filters" id="sf-proj"></div></div>
+    <div class="sessions-only"><h4>Month</h4><div class="sesslist" id="sf-month"></div></div>
+    <div class="railfoot">
+      <span class="threads-only"><kbd>n</kbd> new · </span><kbd>/</kbd> search · <kbd>esc</kbd> or click the title line to close<br>
+      <span id="logpath"></span>
+    </div>
+  </aside>
+
+  <section>
+    <form class="quickadd threads-only" id="qa" autocomplete="off">
+      <div class="qa-top">
+        <span class="caret">&#9656;</span>
+        <input id="qa-title" placeholder="what are you working on?">
+      </div>
+      <div class="qa-more">
+        <div class="prisel" id="qa-prio"></div>
+        <input id="qa-sess" placeholder="account / session" list="dl-sess" size="22">
+        <input id="qa-who" placeholder="with (comma sep)" size="16">
+        <input id="qa-tags" placeholder="tags" size="12">
+        <input id="qa-repo" placeholder="repo / area" size="14">
+        <button class="btn" type="submit">log it</button>
+      </div>
+    </form>
+    <datalist id="dl-sess"></datalist>
+    <div class="viewbar threads-only" id="viewbar"></div>
+    <div id="list" class="threads-only"></div>
+    <div class="viewbar sessions-only" id="sviewbar"></div>
+    <div id="slist" class="sessions-only"></div>
+  </section>
+</main>
+
+<div id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => (s==null?"":String(s)).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const PRIOS = ["P0","P1","P2","P3"];
+const STATUSES = ["active","blocked","waiting","done","parked"];
+const OPEN = ["active","blocked","waiting"];
+const BAND = {P0:"P0 · drop everything", P1:"P1 · this week", P2:"P2 · in flight", P3:"P3 · background"};
+
+let S = {items:[], sessions:[], people:[], tags:[], log:""};
+let F = {view:"open", prio:null, status:null, person:null, session:null, q:"", dated:false};
+const CLOSED = ["done","parked"];
+let openId = null, qaPrio = "P2", editing = null, firstPaint = true;
+let MODE = "sessions";                                  // "sessions" (default) | "threads"
+let SS = {items:[], scanning:false, done:0, total:0, error:"", checked:0};
+let SF = {view:"all", project:null, month:null, tiny:false, linked:false, active:false, q:"",
+          tag:null, person:null, repo:null, sort:"activity"};
+let showReply = false;
+let openSid = null, sqTimer = null, lastSess = "", scrollOnce = true;
+
+/* ---------- net ---------- */
+let lastState = "";
+let pageVersion = null;
+function checkPage(d){
+  // the server stamps every response with index.html's mtime; a change means
+  // this tab is running an old copy, so fetch the new one
+  if(d.page == null) return;
+  if(pageVersion === null) pageVersion = d.page;
+  else if(d.page !== pageVersion && !editing && !/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)) location.reload();
+}
+async function pull(){
+  const txt = await (await fetch("/api/state")).text();
+  if(txt === lastState) return;      // nothing changed — don't touch the DOM
+  lastState = txt;
+  S = JSON.parse(txt);
+  checkPage(S);
+  render();
+}
+async function ev(payload){
+  const r = await fetch("/api/event", {method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify(payload)});
+  const txt = await r.text();
+  const d = JSON.parse(txt);
+  if(!r.ok){ toast(d.error || "failed"); return false; }
+  lastState = txt; S = d; render(); return true;
+}
+async function copy(text, msg){
+  try { await navigator.clipboard.writeText(text); toast(msg || "copied"); }
+  catch(_){ prompt("Copy:", text); }
+}
+function toast(msg){
+  const t = $("#toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(t._t); t._t = setTimeout(()=>t.classList.remove("show"), 1900);
+}
+
+/* ---------- helpers ---------- */
+const when = ts => (ts||"").slice(5,16).replace("T"," ");
+function dueState(it){
+  const d = (it.due||"").trim();
+  if(!d) return {st:"", days:0};
+  const today = S.today;
+  if(d === today) return {st:"today", days:0};
+  if(d < today){
+    const days = Math.round((new Date(today) - new Date(d)) / 86400000);
+    return {st:"overdue", days};
+  }
+  return {st:"upcoming", days:0};
+}
+const dueLabel = it => {
+  const {st, days} = dueState(it);
+  return st === "overdue" ? `${days}d late` : st === "today" ? "check today"
+       : st === "upcoming" ? `check ${it.due.slice(5)}` : "";
+};
+const needsCheck = it => ["today","overdue"].includes(dueState(it).st)
+                          && !["done","parked"].includes(it.status);
+const hay = it => [it.id, it.title, it.repo, it.people.join(" "), it.tags.join(" "),
+  it.sessions.map(s=>s.name).join(" "), it.notes.map(n=>n.text).join(" ")].join(" ").toLowerCase();
+const curSess = it => it.sessions.length ? it.sessions[it.sessions.length-1].name : "";
+const resumeTok = it => it.resume || (curSess(it).split("/").pop() || "");
+function sessHtml(name){
+  if(!name) return "";
+  const i = name.indexOf("/");
+  return i>0 ? `<b>${esc(name.slice(0,i))}</b>${esc(name.slice(i))}` : esc(name);
+}
+function visible(){
+  return S.items.filter(it => {
+    if(F.prio && it.prio !== F.prio) return false;
+    if(F.status){ if(it.status !== F.status) return false; }
+    else if(F.view === "open"   && !OPEN.includes(it.status)) return false;
+    else if(F.view === "closed" && !CLOSED.includes(it.status)) return false;
+    if(F.person && !it.people.some(p => p.toLowerCase().includes(F.person.toLowerCase()))) return false;
+    if(F.session && !it.sessions.some(s => s.name === F.session)) return false;
+    if(F.dated && !it.due) return false;
+    if(F.q && !hay(it).includes(F.q.toLowerCase())) return false;
+    return true;
+  });
+}
+
+/* ---------- render ---------- */
+function render(){
+  $("#logpath").textContent = S.log || "";
+  if(MODE === "sessions"){ renderSessions(); return; }
+  $("#dl-sess").innerHTML = S.sessions.map(s=>`<option value="${esc(s)}">`).join("");
+
+  const open = S.items.filter(i => OPEN.includes(i.status));
+  $("#counts").innerHTML = PRIOS.map((p,n)=>{
+    const c = open.filter(i=>i.prio===p).length;
+    return `<div class="count c${n}" data-p="${p}"><b>${c}</b><span>${p}</span></div>`;
+  }).join("")
+    + (() => { const due = S.items.filter(needsCheck);
+        const late = due.some(i => dueState(i).st === "overdue");
+        return due.length ? `<div class="count chk ${late?"late":""}"><b>${due.length}</b><span>to check</span></div>` : ""; })()
+    + `<div class="count done"><b>${S.items.filter(i=>i.status==="done").length}</b><span>done</span></div>`;
+
+  $("#f-prio").innerHTML = PRIOS.map((p,n)=>
+    `<button class="f p${n} ${F.prio===p?"on":""}" data-f="prio" data-v="${p}">${p}</button>`).join("");
+  const n = st => S.items.filter(i=>i.status===st).length;
+  const allOn = F.view === "all" && !F.status;
+  $("#f-status").innerHTML =
+    `<button class="f ${allOn?"on":""}" data-f="all" data-v="1">all<b>${S.items.length}</b></button>`
+    + STATUSES.map(s=>
+    `<button class="f ${F.status===s?"on":""}" data-f="status" data-v="${s}">${s}${
+      n(s)?`<b>${n(s)}</b>`:""}</button>`).join("")
+    + `<button class="f ${F.dated?"on":""}" data-f="dated" data-v="1">has check date</button>`;
+
+  const nOpen = S.items.filter(i=>OPEN.includes(i.status)).length;
+  const nClosed = S.items.filter(i=>CLOSED.includes(i.status)).length;
+  const dirty = F.prio||F.status||F.person||F.session||F.dated||F.q;
+  $("#viewbar").innerHTML = `
+    <div class="tabs">
+      ${[["open","open",nOpen],["all","everything",S.items.length],["closed","done &amp; parked",nClosed]]
+        .map(([v,label,c])=>`<button data-view="${v}" class="${F.view===v?"on":""}">${label}<b>${c}</b></button>`).join("")}
+    </div>
+    ${dirty?`<button class="clr" data-clear="1">&times; clear filters</button>`:""}
+    <span class="info" id="showing"></span>`;
+  $("#f-people").innerHTML = S.people.length
+    ? S.people.map(p=>`<button class="f ${F.person===p?"on":""}" data-f="person" data-v="${esc(p)}">${esc(p)}</button>`).join("")
+    : `<span class="railnone">nobody yet</span>`;
+  const sCount = {};
+  S.items.forEach(it => it.sessions.forEach(x => sCount[x.name] = (sCount[x.name]||0) + 1));
+  $("#f-sess").innerHTML = S.sessions.length
+    ? S.sessions.map(x=>`<button class="s ${F.session===x?"on":""}" data-f="session"
+        data-v="${esc(x)}" title="${esc(x)}"><span class="nm">${sessHtml(x)}</span
+        ><span class="ct">${sCount[x] > 1 ? sCount[x] : ""}</span></button>`).join("")
+    : `<span class="railnone">no sessions yet</span>`;
+  $("#qa-prio").innerHTML = PRIOS.map(p=>
+    `<button type="button" data-p="${p}" class="${qaPrio===p?"on":""}">${p}</button>`).join("");
+
+  // things whose check-on date has arrived get pinned to the top, above the
+  // priority bands and regardless of the rail filters — that is the whole point
+  // of setting a date. Search still applies so you can dig past them.
+  const flagged = S.items.filter(it => needsCheck(it)
+      && (!F.q || hay(it).includes(F.q.toLowerCase())))
+    .sort((a,b) => a.due < b.due ? -1 : a.due > b.due ? 1 : 0);
+  const pinned = new Set(flagged.map(i=>i.id));
+  const rows = visible().filter(it => !pinned.has(it.id));
+
+  const anim = firstPaint; firstPaint = false;
+  let html = "", i = 0;
+  if(flagged.length){
+    html += `<div class="alertwrap"><div class="alertbar"><span>&#9201; needs a check</span>
+      <hr><em>pinned past your filters</em></div>` +
+      flagged.map(it => thread(it, anim ? i++ : -1, true)).join("") + `</div>`;
+  }
+  $("#showing").textContent = S.items.length
+    ? `showing ${rows.length + flagged.length} of ${S.items.length}` : "";
+  if(!rows.length && !flagged.length){
+    const hidden = S.items.length;
+    $("#list").innerHTML = hidden
+      ? `<p class="empty">Nothing matches this view.<br>
+           <a data-clear="all">show all ${hidden} thread${hidden>1?"s":""}</a></p>`
+      : `<p class="empty">nothing here yet. press <kbd>n</kbd> to start a thread.</p>`;
+    return;
+  }
+  let band = null;
+  for(const it of rows){
+    if(it.prio !== band){ band = it.prio;
+      html += `<div class="band" data-prio="${band}"><span>${esc(BAND[band]||band)}</span><hr></div>`; }
+    html += thread(it, anim ? i++ : -1);
+  }
+  $("#list").innerHTML = html;
+}
+
+function thread(it, idx, flag){
+  const hops = it.sessions.length, o = openId === it.id, d = dueState(it);
+  return `
+<article class="thread ${it.status} ${o?"open":""} ${flag?"flag":""} ${d.st==="overdue"?"late":""}"
+         data-p="${it.prio}" data-id="${it.id}"
+         style="${idx < 0 ? "animation:none" : `animation-delay:${Math.min(idx*22,300)}ms`}">
+  <div class="row" data-act="toggle" ${flag?"":'draggable="true"'}>
+    ${flag?"":`<span class="grip" title="drag to reorder">&#8942;&#8942;</span>`}
+    <span class="idc">${esc(it.id)}</span>
+    <div class="head">
+      <h3 class="ttl">${esc(it.title)}</h3>
+      ${it.resume_cmd
+        ? `<button type="button" class="cmdchip" data-act="copycmd"
+             title="click to copy">claude --resume <i>"${esc(resumeTok(it))}"</i><span class="cp">copy</span></button>`
+        : `<span class="cmdchip none">no session yet</span>`}
+    </div>
+    <div class="metas">
+      ${it.tags.map(t=>`<span class="chip tag">#${esc(t)}</span>`).join("")}
+      ${it.people.length?`<span class="chip who">with ${esc(it.people.join(", "))}</span>`:""}
+      ${d.st?`<span class="chip due ${d.st}">${esc(dueLabel(it))}</span>`:""}
+      ${it.account?`<span class="chip acct" title="${esc(curSess(it))}">${esc(it.account)}</span>`:""}
+      ${hops>1?`<span class="chip hops" title="${esc(it.sessions.map(s=>s.name).join(" \u2192 "))}">\u21b3${hops-1}</span>`:""}
+      <span class="st ${it.status}">${esc(it.status)}</span>
+    </div>
+    <time>${when(it.updated)}</time>
+  </div>
+  ${o ? detail(it) : ""}
+</article>`;
+}
+
+function viewRow(e){
+  return `
+<div class="entry ${e.hop?"hop":""}" data-eid="${e.id}">
+  <div class="when">
+    <span>${when(e.ts)}${e.src?` · ${esc(e.src)}`:""}</span>
+    ${e.edited?`<span class="edited">edited</span>`:""}
+    <span class="lineacts">
+      <button type="button" data-act="editline" data-eid="${e.id}">edit</button>
+      <button type="button" class="x" data-act="delline" data-eid="${e.id}">delete</button>
+    </span>
+  </div>
+  <div class="what">${esc(e.text)}</div>
+</div>`;
+}
+
+function editRow(e){
+  const sess = e.kind === "sess";
+  const val = sess ? e.name : e.text;
+  return `
+<form class="entry editing ${e.hop?"hop":""}" data-act="saveline" data-eid="${e.id}">
+  <div class="when"><span>${when(e.ts)}${sess?" · session name":""}</span></div>
+  <textarea name="text" class="${sess?"oneline":""}" spellcheck="false"
+    autocomplete="off">${esc(val)}</textarea>
+  <div class="ebtns">
+    <button class="btn" type="submit">save</button>
+    <button class="btn ghost" type="button" data-act="cancelline">cancel</button>
+    <span class="hint">&#8984;&#9166; save &middot; esc cancel</span>
+  </div>
+</form>`;
+}
+
+function detail(it){
+  const entries = [];
+  it.sessions.forEach((x, n) => entries.push({id:x.id, kind:"sess", ts:x.ts, hop:true,
+    name:x.name, text:(n === 0 ? "started in " : "moved to ") + x.name}));
+  for(const n of it.notes) entries.push({id:n.id, kind:"note", ts:n.ts, text:n.text,
+    src:n.session, edited:n.edited});
+  entries.sort((a,b) => a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0);   // newest first
+  return `
+<div class="detail">
+  <button type="button" class="closer" data-act="toggle" title="esc">&times; close</button>
+  <div class="log">
+    <h4>Log &middot; newest first</h4>
+    <form class="noteform" data-act="note">
+      <input name="text" placeholder="log a note…" autocomplete="off">
+      <button class="btn" type="submit">add</button>
+    </form>
+    <div class="entries">
+      ${entries.length ? entries.map(e => e.id === editing ? editRow(e) : viewRow(e)).join("")
+      : `<div class="entry"><div class="what" style="color:var(--dimmer)">nothing logged yet</div></div>`}
+    </div>
+  </div>
+
+  <div class="ctl">
+    <div class="grp"><label>Check on</label>
+      <div class="duerow">
+        <form data-act="due" style="flex:1;display:flex">
+          <input type="date" name="due" value="${esc(it.due||"")}">
+        </form>
+        <button data-act="dueshift" data-v="1">+1d</button>
+        <button data-act="dueshift" data-v="7">+1w</button>
+        ${it.due?`<button data-act="dueclear">clear</button>`:""}
+      </div>
+      ${it.due?`<span style="font-size:10.5px;color:${dueState(it).st==="overdue"?"var(--p0)"
+        :dueState(it).st==="today"?"var(--p1)":"var(--dimmer)"}">${esc(dueLabel(it))}</span>`:""}
+    </div>
+
+    <div class="grp"><label>Priority</label>
+      <div class="seg">${PRIOS.map(p=>`<button data-act="prio" data-p="${p}" data-v="${p}"
+        class="${it.prio===p?"on":""}">${p}</button>`).join("")}</div></div>
+    <div class="grp"><label>Status</label>
+      <div class="seg">${STATUSES.map(s=>`<button data-act="status" data-v="${s}"
+        class="${it.status===s?"on":""}">${s}</button>`).join("")}</div></div>
+    <div class="grp"><label>Now in session</label>
+      <form data-act="sess"><input name="session" list="dl-sess" placeholder="account / session"
+        value="${esc(curSess(it))}"></form></div>
+    <div class="grp"><label>Working with</label>
+      <form data-act="people"><input name="people" placeholder="comma separated"
+        value="${esc(it.people.join(", "))}"></form></div>
+    <div class="grp"><label>Tags</label>
+      <form data-act="tags"><input name="tags" placeholder="comma separated"
+        value="${esc(it.tags.join(", "))}"></form></div>
+    <div class="grp"><label>Repo / area</label>
+      <form data-act="repo"><input name="repo" value="${esc(it.repo)}"></form></div>
+    <div class="grp"><label>Resume token <span style="text-transform:none;letter-spacing:0">(default: the session name)</span></label>
+      <form data-act="resume"><input name="resume" placeholder="${esc(resumeTok(it))}"
+        value="${esc(it.resume||"")}"></form></div>
+    <div class="acts">
+      <button class="btn" data-act="handoff">copy handoff</button>
+      <button class="btn ghost" data-act="done">${it.status==="done"?"reopen":"mark done"}</button>
+      <button class="btn ghost danger" data-act="del">delete</button>
+    </div>
+  </div>
+</div>`;
+}
+
+/* ---------- events ---------- */
+$("#list").addEventListener("click", async e => {
+  const art = e.target.closest(".thread"); if(!art) return;
+  const id = art.dataset.id;
+  const btn = e.target.closest("[data-act]"); if(!btn) return;
+  const act = btn.dataset.act;
+  if(act === "toggle"){ openId = openId === id ? null : id; syncHash(); render(); return; }
+  if(act === "copycmd"){
+    e.preventDefault(); e.stopPropagation();
+    const it0 = S.items.find(x=>x.id===id);
+    const cmd = it0.resume_cmd;
+    if(!cmd){ toast("no session recorded for this thread yet"); return; }
+    copy(cmd, "copied:  " + cmd);
+    return;
+  }
+  if(btn.tagName !== "BUTTON") return;
+  e.preventDefault();
+  const it = S.items.find(x=>x.id===id);
+  if(act === "editline"){ editing = btn.dataset.eid; render();
+    const ta = document.querySelector(".entry.editing textarea");
+    if(ta){ fit(ta); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+    return; }
+  if(act === "cancelline"){ editing = null; render(); return; }
+  if(act === "delline"){
+    const eid = btn.dataset.eid;
+    const hop = eid.startsWith("s");
+    if(hop && !confirm("Delete this session hop? It can change the resume command.")) return;
+    editing = null;
+    await ev({op: hop ? "sess_del" : "note_del", id, line: eid});
+    toast("line deleted");
+    return;
+  }
+  if(act === "dueshift"){
+    const base = it.due && it.due >= S.today ? new Date(it.due) : new Date(S.today);
+    base.setDate(base.getDate() + Number(btn.dataset.v));
+    await ev({op:"set", id, fields:{due: base.toISOString().slice(0,10)}});
+    toast("check on " + (S.items.find(x=>x.id===id)||{}).due);
+  }
+  if(act === "dueclear") await ev({op:"set", id, fields:{due: ""}});
+  if(act === "prio")   await ev({op:"set", id, fields:{prio: btn.dataset.v}});
+  if(act === "status") await ev({op:"set", id, fields:{status: btn.dataset.v}});
+  if(act === "done")   await ev({op:"set", id, fields:{status: it.status==="done"?"active":"done"}});
+  if(act === "del"){
+    if(confirm(`Delete ${id} — "${it.title}"?`)){ openId = null; await ev({op:"del", id}); toast("deleted"); }
+  }
+  if(act === "handoff"){
+    const r = await fetch("/api/handoff?id="+encodeURIComponent(id));
+    const d = await r.json();
+    copy(d.text, "handoff copied — paste into the other account");
+  }
+});
+
+$("#list").addEventListener("submit", async e => {
+  const form = e.target.closest("form[data-act]"); if(!form) return;
+  e.preventDefault();
+  const id = form.closest(".thread").dataset.id;
+  const act = form.dataset.act;
+  const val = form.querySelector("input, textarea").value;
+  const it = S.items.find(x=>x.id===id);
+  if(act === "saveline"){
+    const eid = form.dataset.eid, hop = eid.startsWith("s");
+    editing = null;
+    if(!val.trim()){ render(); return; }
+    await ev(hop ? {op:"sess_edit", id, line:eid, session:val.trim()}
+                 : {op:"note_edit", id, line:eid, text:val.trim()});
+    toast("line updated");
+    return;
+  }
+  if(act === "note"){
+    if(!val.trim()) return;
+    if(await ev({op:"note", id, text:val, session: curSess(it)})) toast("logged");
+  }
+  // only write when the value actually changed, so blur doesn't spam the log
+  const same = (a,b) => JSON.stringify(a) === JSON.stringify(b);
+  if(act === "sess" && val.trim() && val.trim() !== curSess(it)) await ev({op:"sess", id, session:val});
+  if(act === "people" && !same(split(val), it.people)) await ev({op:"set", id, fields:{people: split(val)}});
+  if(act === "tags"   && !same(split(val), it.tags))   await ev({op:"set", id, fields:{tags: split(val)}});
+  if(act === "repo"   && val.trim() !== it.repo)       await ev({op:"set", id, fields:{repo: val.trim()}});
+  if(act === "due"    && val !== (it.due||""))         await ev({op:"set", id, fields:{due: val}});
+  if(act === "resume" && val.trim() !== (it.resume||"")) await ev({op:"set", id, fields:{resume: val.trim()}});
+});
+// blur on the inline field forms commits too
+$("#list").addEventListener("change", e => {
+  if(e.target.type === "date") e.target.closest("form").requestSubmit();
+});
+$("#list").addEventListener("focusout", e => {
+  const form = e.target.closest("form[data-act]");
+  if(form && !["note","saveline"].includes(form.dataset.act)) form.requestSubmit();
+});
+
+const split = v => v.split(",").map(s=>s.trim()).filter(Boolean);
+
+// grow a textarea to its content; CSS min-height keeps the 15-row floor
+function fit(el){
+  if(!el) return;
+  el.style.height = "auto";
+  el.style.height = (el.scrollHeight + 2) + "px";
+}
+$("#list").addEventListener("input", e => {
+  if(e.target.tagName === "TEXTAREA") fit(e.target);
+});
+
+document.querySelector(".rail").addEventListener("click", e => {
+  const b = e.target.closest("[data-f]"); if(!b) return;
+  const {f, v} = b.dataset;
+  if(f === "all"){ F.view = F.view === "all" ? "open" : "all"; F.status = null; }
+  else if(f === "dated") F.dated = !F.dated;
+  else if(f === "prio") F.prio = F.prio === v ? null : v;
+  else if(f === "status"){ F.status = F.status === v ? null : v; if(F.status) F.view = "all"; }
+  else if(f === "person") F.person = F.person === v ? null : v;
+  else if(f === "session") F.session = F.session === v ? null : v;
+  render();
+});
+$("#viewbar").addEventListener("click", e => {
+  const t = e.target.closest("[data-view]");
+  if(t){ F.view = t.dataset.view; F.status = null; render(); return; }
+  if(e.target.closest("[data-clear]")) clearFilters();
+});
+$("#list").addEventListener("click", e => {
+  if(e.target.closest("[data-clear]")){ F.view = "all"; clearFilters(); }
+}, true);
+$("#counts").addEventListener("click", e => {
+  const c = e.target.closest(".count"); if(!c) return;
+  if(c.classList.contains("chk")){ F.view = "all"; F.prio = null; F.dated = true; }
+  else if(c.dataset.p){ F.prio = F.prio === c.dataset.p ? null : c.dataset.p; }
+  else { F.view = "closed"; F.status = null; }
+  render();
+});
+function clearFilters(){
+  F.prio = F.status = F.person = F.session = null;
+  F.dated = false; F.q = ""; $("#search").value = "";
+  render();
+}
+$("#search").addEventListener("input", e => {
+  if(MODE === "sessions"){ SF.q = e.target.value; clearTimeout(sqTimer); sqTimer = setTimeout(() => pullSessions(), 180); return; }
+  F.q = e.target.value; render();
+});
+
+$("#qa-title").addEventListener("focus", () => $("#qa").classList.add("open"));
+$("#qa-prio").addEventListener("click", e => {
+  const b = e.target.closest("button"); if(!b) return;
+  qaPrio = b.dataset.p; render();
+});
+$("#qa").addEventListener("submit", async e => {
+  e.preventDefault();
+  const title = $("#qa-title").value.trim();
+  if(!title) return;
+  const ok = await ev({op:"add", title, prio:qaPrio, session:$("#qa-sess").value.trim(),
+    people:split($("#qa-who").value), tags:split($("#qa-tags").value), repo:$("#qa-repo").value.trim()});
+  if(ok){
+    ["#qa-title","#qa-sess","#qa-who","#qa-tags","#qa-repo"].forEach(id => $(id).value = "");
+    qaPrio = "P2";              // back to the default, not whatever was last used
+    render();
+    toast("thread opened");
+    $("#qa-title").focus();
+  }
+});
+
+document.addEventListener("keydown", e => {
+  const typing = /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName);
+  if(e.key === "Escape"){
+    document.activeElement.blur();
+    if(editing){ editing = null; render(); return; }
+    if(MODE === "sessions"){ if(openSid){ openSid = null; syncHash(); renderSessions(); } return; }
+    if(openId){ openId = null; syncHash(); render(); }
+    return;
+  }
+  if((e.metaKey || e.ctrlKey) && e.key === "Enter"){
+    const f = document.activeElement.closest && document.activeElement.closest("form[data-act]");
+    if(f){ e.preventDefault(); f.requestSubmit(); return; }
+  }
+  if(typing) return;
+  if(e.key === "/"){ e.preventDefault(); $("#search").focus(); }
+  if(e.key === "n" && MODE === "threads"){ e.preventDefault(); $("#qa").classList.add("open"); $("#qa-title").focus(); }
+});
+
+// keep in sync with CLI / Claude-session writes
+setInterval(() => {
+  if(document.hidden) return;
+  if(/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)) return;
+  if(editing) return;
+  pull();
+}, 6000);
+
+/* ---------------- drag to reorder ----------------
+   The server hands items back already sorted, so S.items IS the canonical
+   order. A drop splices the dragged id into that array and posts the whole
+   list; the server only writes the ranks that actually moved. Dropping onto a
+   different band (or its header) re-prioritises the thread as well. */
+let dragId = null;
+
+function clearMarks(){
+  document.querySelectorAll(".over-top,.over-bot,.band.over")
+    .forEach(el => el.classList.remove("over-top","over-bot","over"));
+}
+
+function commit(ids, prio){
+  clearMarks();
+  ev({op:"reorder", order: ids, id: dragId, prio});
+}
+
+$("#list").addEventListener("dragstart", e => {
+  const row = e.target.closest(".row[draggable]"); if(!row) return;
+  dragId = row.closest(".thread").dataset.id;
+  row.closest(".thread").classList.add("dragging");
+  document.body.classList.add("dragging-on");
+  e.dataTransfer.effectAllowed = "move";
+  e.dataTransfer.setData("text/plain", dragId);   // firefox needs a payload
+});
+
+$("#list").addEventListener("dragend", () => {
+  document.querySelectorAll(".dragging").forEach(el => el.classList.remove("dragging"));
+  document.body.classList.remove("dragging-on");
+  clearMarks();
+  dragId = null;
+});
+
+$("#list").addEventListener("dragover", e => {
+  if(!dragId) return;
+  const band = e.target.closest(".band");
+  const art = e.target.closest(".thread");
+  if(!band && !art) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = "move";
+  clearMarks();
+  if(band){ band.classList.add("over"); return; }
+  if(art.dataset.id === dragId || art.closest(".alertwrap")) return;
+  const r = art.getBoundingClientRect();
+  art.classList.add(e.clientY < r.top + r.height / 2 ? "over-top" : "over-bot");
+});
+
+$("#list").addEventListener("drop", e => {
+  if(!dragId) return;
+  e.preventDefault();
+  const ids = S.items.map(i => i.id).filter(x => x !== dragId);
+
+  const band = e.target.closest(".band");
+  if(band){                                   // drop on a header: top of that band
+    const prio = band.dataset.prio;
+    const rank = PRIOS.indexOf(prio);
+    let at = ids.findIndex(x => PRIOS.indexOf(S.items.find(i => i.id === x).prio) >= rank);
+    if(at < 0) at = ids.length;
+    ids.splice(at, 0, dragId);
+    return commit(ids, prio);
+  }
+
+  const art = e.target.closest(".thread");
+  if(!art || art.dataset.id === dragId || art.closest(".alertwrap")) return;
+  const targetId = art.dataset.id;
+  const r = art.getBoundingClientRect();
+  const before = e.clientY < r.top + r.height / 2;
+  let at = ids.indexOf(targetId);
+  if(at < 0) at = ids.length;
+  ids.splice(before ? at : at + 1, 0, dragId);
+  commit(ids, S.items.find(i => i.id === targetId).prio);
+});
+
+// deep links: /#w2 opens that thread, so a single item is bookmarkable/shareable
+function syncHash(){
+  const h = MODE === "sessions" ? (openSid ? "#s/" + openSid : "") : (openId ? "#" + openId : "#threads");
+  if(location.hash !== h) history.replaceState(null, "", location.pathname + h);
+}
+function readHash(){
+  const h = location.hash.slice(1);
+  // root and #sessions open the catalog; #threads or a thread id (#w7) open the tracker
+  if(h === "threads" || /^w\d+$/.test(h)){ MODE = "threads"; openId = h === "threads" ? null : h; }
+  else { MODE = "sessions"; openSid = h.startsWith("s/") ? h.slice(2) : null; }
+  document.body.dataset.mode = MODE;
+}
+addEventListener("hashchange", () => { readHash(); if(MODE === "sessions") pullSessions(); else render(); });
+readHash();
+
+/* ================= sessions catalog =================
+   Every Claude Code session on this Mac, read from ~/.claude/projects by the
+   server. Search runs server-side over the prompts; everything else filters
+   the returned rows here. Labels/tags/notes are `smeta` events in the log. */
+function setMode(m){
+  if(MODE === m) return;
+  MODE = m; document.body.dataset.mode = m;
+  $("#search").value = m === "sessions" ? SF.q : F.q;
+  $("#search").placeholder = m === "sessions" ? "search prompts  /" : "search  /";
+  $("#modes").querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.mode === m));
+  syncHash();
+  if(m === "sessions") pullSessions(); else render();
+}
+$("#modes").addEventListener("click", e => {
+  const b = e.target.closest("[data-mode]"); if(b) setMode(b.dataset.mode);
+});
+
+async function pullSessions(force){
+  const url = "/api/sessions?q=" + encodeURIComponent(SF.q) + (force ? "&rescan=1" : "");
+  const txt = await (await fetch(url)).text();
+  if(txt === lastSess && !force) return;
+  lastSess = txt; SS = JSON.parse(txt);
+  checkPage(SS);
+  renderSessions();
+  if(SS.scanning) setTimeout(() => pullSessions(), 1500);   // follow a scan to its end
+  else if(SS.enriching) setTimeout(() => pullSessions(), 8000);
+}
+async function sev(payload){
+  payload.q = SF.q;
+  const r = await fetch("/api/event", {method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify(payload)});
+  const txt = await r.text(); const d = JSON.parse(txt);
+  if(!r.ok){ toast(d.error || "failed"); return false; }
+  lastSess = txt; SS = d; renderSessions(); return true;
+}
+
+const sname = r => r.label || r.auto_label || r.title || r.ai_title || (r.first_prompt||"").slice(0,90).replace(/\s+/g," ") || r.sid.slice(0,8);
+const month = r => (r.last||"").slice(0,7);
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const monthLabel = m => m ? `${m.slice(0,4)} · ${MONTHS[Number(m.slice(5,7))-1]||m.slice(5)}` : "undated";
+const hiMark = (text, q) => {
+  let h = esc(text);
+  for(const t of (q||"").toLowerCase().split(/\s+/).filter(Boolean)){
+    h = h.replace(new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"), "gi"), m => `<mark>${m}</mark>`);
+  }
+  return h;
+};
+
+function svisible(){
+  return SS.items.filter(r => {
+    if(SF.view === "labelled"   && !r.label) return false;
+    if(SF.view === "unlabelled" &&  r.label) return false;
+    if(!SF.tiny && r.tiny && !r.label) return false;
+    if(SF.linked && !r.threads.length) return false;
+    if(SF.active && !r.active) return false;
+    if(SF.project && r.project !== SF.project) return false;
+    if(SF.month && month(r) !== SF.month) return false;
+    if(SF.tag && !allTags(r).includes(SF.tag)) return false;
+    if(SF.person && !r.people.includes(SF.person)) return false;
+    if(SF.repo && !r.repos.includes(SF.repo)) return false;
+    return true;
+  }).sort(SORTS[SF.sort] || SORTS.activity);
+}
+const allTags = r => [...new Set([...r.tags, ...r.auto_tags])];
+function shortPr(u){
+  const m = u.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)$/);
+  if(!m) return u;
+  const inOrg = (SS.github_org||"").toLowerCase() === m[1].toLowerCase();
+  return (inOrg ? "" : m[1] + "/") + m[2] + "#" + m[3];
+}
+const SORTS = {
+  activity: (a,b) => b.last.localeCompare(a.last),
+  started:  (a,b) => b.created.localeCompare(a.created),
+  longest:  (a,b) => b.n_prompts - a.n_prompts || b.last.localeCompare(a.last),
+  name:     (a,b) => sname(a).localeCompare(sname(b), undefined, {sensitivity:"base"}),
+};
+function chips(id, key, counts, on, max){
+  const keys = Object.keys(counts).sort((a,b) => counts[b]-counts[a] || a.localeCompare(b)).slice(0, max);
+  $(id).innerHTML = keys.length ? keys.map(k =>
+    `<button class="f ${on===k?"on":""}" data-sf="${key}" data-v="${esc(k)}" title="${esc(k)}">${esc(k)}<b>${counts[k]}</b></button>`).join("")
+    : `<span class="railnone">none yet</span>`;
+}
+
+function renderSessions(){
+  $("#modes").querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.mode === MODE));
+  const all = SS.items, lab = all.filter(r => r.label).length;
+  $("#counts").innerHTML =
+    `<div class="count act"><b>${all.filter(r => r.active).length}</b><span>active</span></div>` +
+    `<div class="count lab"><b>${lab}</b><span>labelled</span></div>` +
+    `<div class="count unlab"><b>${all.filter(r => !r.label && !r.tiny).length}</b><span>unlabelled</span></div>` +
+    `<div class="count tot"><b>${all.length}</b><span>sessions</span></div>`;
+
+  // rail
+  const projs = {}; all.forEach(r => projs[r.project] = (projs[r.project]||0) + 1);
+  $("#sf-proj").innerHTML = Object.keys(projs).sort((a,b) => projs[b]-projs[a]).map(p =>
+    `<button class="f ${SF.project===p?"on":""}" data-sf="project" data-v="${esc(p)}">${esc(p)}<b>${projs[p]}</b></button>`).join("");
+  $("#sf-show").innerHTML =
+    `<button class="f ${SF.active?"on":""}" data-sf="active" data-v="1">active now</button>` +
+    `<button class="f ${SF.linked?"on":""}" data-sf="linked" data-v="1">linked to a thread</button>` +
+    `<button class="f ${SF.tiny?"on":""}" data-sf="tiny" data-v="1">include tiny</button>`;
+  const tally = (facet, pick) => { const c = {}; svisibleWithout(facet).forEach(r => pick(r).forEach(k => c[k] = (c[k]||0) + 1)); return c; };
+  chips("#sf-tag", "tag", tally("tag", allTags), SF.tag, 24);
+  chips("#sf-ppl", "person", tally("person", r => r.people), SF.person, 18);
+  chips("#sf-repo", "repo", tally("repo", r => r.repos), SF.repo, 18);
+  const months = {}; svisibleWithout("month").forEach(r => { const m = month(r); months[m] = (months[m]||0) + 1; });
+  $("#sf-month").innerHTML = Object.keys(months).sort().reverse().map(m =>
+    `<button class="s ${SF.month===m?"on":""}" data-sf="month" data-v="${m}"><span class="nm">${monthLabel(m)}</span><span class="ct">${months[m]}</span></button>`).join("")
+    || `<span class="railnone">nothing yet</span>`;
+
+  const rows = svisible();
+  const dirty = SF.project || SF.month || SF.tiny || SF.linked || SF.active || SF.q || SF.tag || SF.person || SF.repo;
+  const scanned = SS.checked ? new Date(SS.checked*1000).toTimeString().slice(0,5) : "";
+  $("#sviewbar").innerHTML = `
+    <div class="tabs">
+      ${[["all","everything",all.length],["labelled","labelled",lab],["unlabelled","unlabelled",all.length-lab]]
+        .map(([v,label,c])=>`<button data-sview="${v}" class="${SF.view===v?"on":""}">${label}<b>${c}</b></button>`).join("")}
+    </div>
+    ${dirty?`<button class="clr" data-sclear="1">&times; clear filters</button>`:""}
+    <div class="sortsel"><em>sort</em>${[["activity","activity"],["started","started"],["longest","longest"],["name","a–z"]]
+      .map(([v,l])=>`<button data-ssort="${v}" class="${SF.sort===v?"on":""}">${l}</button>`).join("")}</div>
+    ${SS.scanning ? `<span class="scan">scanning ${SS.done}/${SS.total}…</span>`
+                  : `<button class="rescan" data-rescan="1" title="re-read ~/.claude/projects">rescan${scanned?" · "+scanned:""}</button>`}
+    ${SS.enriching ? `<span class="scan">summarising…</span>`
+      : SS.unsummarised ? `<button class="rescan" data-enrich="all" title="${SS.enrich_auto?"auto mode will pick these up within 10 minutes; click to do it now":"run enrich.py for sessions with no summary or grown since"}">summarise ${SS.unsummarised} new</button>` : ""}
+    ${SS.error?`<span class="scan" style="color:var(--p0)">${esc(SS.error)}</span>`:""}
+    <span class="info">showing ${rows.length} of ${all.length}${SF.q?` for “${esc(SF.q)}”`:""}</span>`;
+
+  if(!rows.length){
+    $("#slist").innerHTML = all.length
+      ? `<p class="empty">No sessions match.<br><a data-sclear="all">show everything</a></p>`
+      : SS.scanning ? `<p class="empty">first scan of ~/.claude/projects is running…</p>`
+                    : `<p class="empty">no sessions found under ${esc(SS.projects_dir||"~/.claude/projects")}</p>`;
+    return;
+  }
+  let html = "", band = null;
+  for(const r of rows){
+    const m = month(r);
+    if(m !== band){ band = m; html += `<div class="band month"><span>${monthLabel(m)}</span><hr></div>`; }
+    html += sessionRow(r);
+  }
+  $("#slist").innerHTML = html;
+  if(openSid && scrollOnce){ scrollOnce = false;
+    const el = document.querySelector(`.thread[data-sid="${openSid}"]`);
+    if(el) el.scrollIntoView({block:"start"}); }
+}
+function svisibleWithout(facet){ const keep = SF[facet]; SF[facet] = null; const v = svisible(); SF[facet] = keep; return v; }
+
+function sessionRow(r){
+  const o = openSid === r.sid;
+  return `
+<article class="thread sess ${r.label?"labelled":"unlabelled"} ${r.active?"live":""} ${o?"open":""}" data-sid="${r.sid}">
+  <div class="row" data-sact="toggle">
+    <span class="idc" title="${esc(r.sid)}">${esc(r.sid.slice(0,6))}</span>
+    <div class="head">
+      <div class="top">
+        <h3 class="ttl">${esc(sname(r))}</h3>
+        <button type="button" class="cmdchip" data-sact="copy" data-text="${esc(r.resume_cmd)}"
+          title="click to copy">${esc(r.resume_cmd.replace(/^cd .* && /,"")).replace(/"([^"]+)"$/, '"<i>$1</i>"')}<span class="cp">copy</span></button>
+      </div>
+      ${r.summary_ai ? `<p class="sum">${SF.q ? hiMark(r.summary_ai, SF.q) : esc(r.summary_ai)}</p>`
+                     : r.ai_title && r.ai_title !== sname(r) ? `<p class="sum">${esc(r.ai_title)}</p>` : ""}
+    <div class="metas">
+      ${r.title && sname(r) !== r.title ? `<span class="chip name" title="session name">${esc(r.title)}</span>` : ""}
+      ${r.project !== "~/code" ? `<span class="chip proj">${esc(r.project)}</span>` : ""}
+      ${r.tags.map(t=>`<span class="chip tag">#${esc(t)}</span>`).join("")}
+      ${r.auto_tags.filter(t=>!r.tags.includes(t)).map(t=>`<span class="chip auto" title="auto tag">#${esc(t)}</span>`).join("")}
+      ${r.people.length ? `<span class="chip ppl">with ${esc(r.people.slice(0,3).join(", "))}${r.people.length>3?" +"+(r.people.length-3):""}</span>` : ""}
+      ${r.prs.length ? `<span class="chip" title="${esc(r.prs.join("\n"))}">${r.prs.length} PR${r.prs.length>1?"s":""}</span>` : ""}
+      ${r.threads.map(w=>`<span class="chip link" data-sact="thread" data-w="${w}" title="open thread ${w}">${w}</span>`).join("")}
+      ${r.shared ? `<span class="chip warn" title="${r.shared} other session${r.shared>1?"s":""} share this name; resume by name may pick another">name ×${r.shared+1}</span>` : ""}
+      <span class="chip hops" title="prompts">${r.n_prompts}p</span>
+      ${r.active ? `<span class="st active" title="activity in the last ${SS.active_hours||24}h">active</span>` : ""}
+      ${r.stale && !r.enriched ? `<span class="chip auto" style="opacity:.6">${SS.enriching?"summarising…":"new"}</span>` : ""}
+    </div>
+    </div>
+    <time>${when(r.last)}</time>
+  </div>
+  ${o ? sessionDetail(r) : ""}
+</article>`;
+}
+
+function sessionDetail(r){
+  const kb = Math.round(r.size/1024);
+  return `
+<div class="detail">
+  <button type="button" class="closer" data-sact="toggle" title="esc">&times; close</button>
+  <div class="log">
+    ${r.snippet ? `<h4>Match</h4><p class="snip">${hiMark(r.snippet, SF.q)}</p>` : ""}
+    ${r.summary_ai ? `<h4>What happened</h4><p class="summ">${SF.q ? hiMark(r.summary_ai, SF.q) : esc(r.summary_ai)}</p>` : ""}
+    ${r.outcome ? `<p class="outcome"><b>Where it ended</b>${esc(r.outcome)}</p>` : ""}
+    ${r.prs.length || r.issues.length || r.repos.length ? `<div class="links">
+      ${r.prs.map(u=>`<a href="${esc(u)}" target="_blank" rel="noopener">${esc(shortPr(u))}</a>`).join("")}
+      ${r.issues.filter(i=>!r.prs.some(u=>u.endsWith("/"+i.split("#")[1]) && u.includes("/"+i.split("#")[0]+"/"))).map(i=>`<span>${esc(i)}</span>`).join("")}
+      ${r.repos.map(x=>`<span title="repo edited">${esc(x)}</span>`).join("")}
+    </div>` : ""}
+    <h4>First prompt</h4>
+    <pre class="first">${esc(r.first_prompt || "(nothing typed)")}</pre>
+    ${r.last_reply ? `<button type="button" class="details-toggle" data-sact="reply">${showReply?"▾":"▸"} closing reply</button>
+      ${showReply ? `<pre class="first">${esc(r.last_reply)}</pre>` : ""}` : ""}
+    ${r.summary ? `<h4>Compaction summary</h4><p class="snip" style="border-color:var(--line2)">${esc(r.summary)}</p>` : ""}
+    <h4>About</h4>
+    <div class="about">
+      ${r.ai_title ? `<b>auto title</b> ${esc(r.ai_title)}<br>` : ""}
+      ${r.titles.length ? `<b>name${r.titles.length>1?"s":""}</b> ${r.titles.map((t,i)=>i===r.titles.length-1?`<i>${esc(t)}</i>`:esc(t)).join(" → ")}<br>` : "<b>name</b> none (resume by uuid)<br>"}
+      <b>uuid</b> ${esc(r.sid)}<br>
+      <b>project</b> ${esc(r.project)}${r.branch?` · <b>branch</b> ${esc(r.branch)}`:""}<br>
+      <b>active</b> ${when(r.created)} → ${when(r.last)} · ${r.days} day${r.days===1?"":"s"} · ${r.n_prompts} prompts · ${kb} KB<br>
+      ${r.people.length ? `<b>people</b> ${esc(r.people.join(", "))}<br>` : ""}
+      <b>summarised</b> ${r.enriched ? `at ${r.enriched} prompts${r.n_prompts > r.enriched ? ` (now ${r.n_prompts})` : ""}` : "not yet"}${r.stale ? " · " : ""}${r.stale && !SS.enriching ? `<button type="button" class="details-toggle" style="margin:0" data-sact="enrich">${r.enriched?"refresh":"summarise now"}</button>` : r.stale ? "queued" : ""}<br>
+      <b>file</b> ${esc(r.path)}
+    </div>
+  </div>
+  <div class="ctl">
+    <div class="grp"><label>Label</label>
+      <form data-sact="label"><input name="label" placeholder="${esc(r.auto_label || "what this session was about")}" value="${esc(r.label)}"></form>
+      ${!r.label && r.auto_label ? `<span style="font-size:10px;color:var(--dimmer)">shown: the auto label; type to replace it</span>` : ""}</div>
+    <div class="grp"><label>Tags</label>
+      <form data-sact="tags"><input name="tags" placeholder="comma separated" value="${esc(r.tags.join(", "))}"></form></div>
+    <div class="grp"><label>Note</label>
+      <form data-sact="note"><textarea name="note" placeholder="anything worth remembering about it">${esc(r.note)}</textarea></form></div>
+    <div class="grp"><label>Resume</label>
+      <div class="cmdstack">
+        <button type="button" class="cmdchip" data-sact="copy" data-text="${esc(r.resume_cmd)}">${esc(r.resume_cmd)}<span class="cp"> copy</span></button>
+        ${r.title ? `<button type="button" class="cmdchip" data-sact="copy" data-text="${esc(r.resume_uuid_cmd)}" title="unambiguous even if the name is shared">${esc(r.resume_uuid_cmd)}<span class="cp"> copy</span></button>` : ""}
+      </div></div>
+    <div class="acts">
+      ${r.threads.length ? r.threads.map(w=>`<button class="btn" data-sact="thread" data-w="${w}">open ${w}</button>`).join("")
+                         : `<button class="btn" data-sact="newthread">start a thread</button>`}
+      <button class="btn ghost" data-sact="copy" data-text="${esc(r.sid)}">copy uuid</button>
+    </div>
+  </div>
+</div>`;
+}
+
+$("#slist").addEventListener("click", async e => {
+  const art = e.target.closest(".thread"); if(!art) return;
+  const sid = art.dataset.sid;
+  if(e.target.closest("a")) { e.stopPropagation(); return; }
+  const btn = e.target.closest("[data-sact]"); if(!btn) return;
+  const act = btn.dataset.sact;
+  if(act === "toggle"){ openSid = openSid === sid ? null : sid; showReply = false; syncHash(); renderSessions(); return; }
+  e.preventDefault(); e.stopPropagation();
+  const r = SS.items.find(x => x.sid === sid);
+  if(act === "copy"){ copy(btn.dataset.text, "copied:  " + btn.dataset.text); return; }
+  if(act === "reply"){ showReply = !showReply; renderSessions(); return; }
+  if(act === "enrich"){ if(await sev({op:"enrich", sid})) toast("summarising this session"); return; }
+  if(act === "thread"){ openId = btn.dataset.w; setMode("threads"); return; }
+  if(act === "newthread"){
+    const ok = await ev({op:"add", title: sname(r), prio:"P2", session: r.title || r.sid,
+      resume: r.title ? "" : r.sid, tags: r.tags});
+    if(ok){ const it = S.items.reduce((a,b) => (!a || b.created > a.created) ? b : a, null);
+      openId = it ? it.id : null; lastSess = ""; setMode("threads"); toast("thread opened from this session"); }
+  }
+});
+$("#slist").addEventListener("submit", async e => {
+  const form = e.target.closest("form[data-sact]"); if(!form) return;
+  e.preventDefault();
+  const sid = form.closest(".thread").dataset.sid;
+  const r = SS.items.find(x => x.sid === sid);
+  const val = form.querySelector("input, textarea").value;
+  const act = form.dataset.sact;
+  const same = (a,b) => JSON.stringify(a) === JSON.stringify(b);
+  if(act === "label" && val.trim() !== r.label)          { if(await sev({op:"smeta", sid, fields:{label: val.trim()}})) toast("label saved"); }
+  if(act === "tags"  && !same(split(val), r.tags))        { if(await sev({op:"smeta", sid, fields:{tags: split(val)}})) toast("tags saved"); }
+  if(act === "note"  && val.trim() !== r.note)            { if(await sev({op:"smeta", sid, fields:{note: val.trim()}})) toast("note saved"); }
+});
+$("#slist").addEventListener("focusout", e => {
+  const form = e.target.closest("form[data-sact]"); if(form) form.requestSubmit();
+});
+$("#slist").addEventListener("click", e => {
+  if(e.target.closest("[data-sclear]")){ SF.view = "all"; clearSessionFilters(); }
+}, true);
+$("#sviewbar").addEventListener("click", e => {
+  const t = e.target.closest("[data-sview]");
+  if(t){ SF.view = t.dataset.sview; renderSessions(); return; }
+  const so = e.target.closest("[data-ssort]");
+  if(so){ SF.sort = so.dataset.ssort; renderSessions(); return; }
+  if(e.target.closest("[data-sclear]")) clearSessionFilters();
+  if(e.target.closest("[data-rescan]")) pullSessions(true);
+  if(e.target.closest("[data-enrich]")) sev({op:"enrich"}).then(ok => ok && toast("summarising in the background"));
+});
+document.querySelector(".rail").addEventListener("click", e => {
+  const b = e.target.closest("[data-sf]"); if(!b) return;
+  const {sf, v} = b.dataset;
+  if(sf === "project") SF.project = SF.project === v ? null : v;
+  else if(sf === "month") SF.month = SF.month === v ? null : v;
+  else if(sf === "tiny") SF.tiny = !SF.tiny;
+  else if(sf === "linked") SF.linked = !SF.linked;
+  else if(sf === "active") SF.active = !SF.active;
+  else if(sf === "tag") SF.tag = SF.tag === v ? null : v;
+  else if(sf === "person") SF.person = SF.person === v ? null : v;
+  else if(sf === "repo") SF.repo = SF.repo === v ? null : v;
+  renderSessions();
+});
+function clearSessionFilters(){
+  SF.project = SF.month = SF.tag = SF.person = SF.repo = null; SF.tiny = SF.linked = SF.active = false;
+  if(SF.q){ SF.q = ""; $("#search").value = ""; pullSessions(); } else renderSessions();
+}
+$("#counts").addEventListener("click", e => {
+  if(MODE !== "sessions") return;
+  const c = e.target.closest(".count"); if(!c) return;
+  e.stopImmediatePropagation();
+  if(c.classList.contains("act")){ SF.active = !SF.active; renderSessions(); return; }
+  SF.view = c.classList.contains("lab") ? "labelled" : c.classList.contains("unlab") ? "unlabelled" : "all";
+  renderSessions();
+}, true);
+setInterval(() => {
+  if(MODE !== "sessions" || document.hidden || SS.scanning || SS.enriching) return;
+  if(/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)) return;
+  pullSessions();
+}, 30000);
+
+if(MODE === "sessions"){ $("#search").placeholder = "search prompts  /"; pullSessions(); }
+pull();
+</script>
+</body>
+</html>

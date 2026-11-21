@@ -1,0 +1,34 @@
+# worklog configuration. Copy to worklog.toml (git-ignored) and edit.
+# Every key is optional; the values shown are the defaults.
+
+[paths]
+projects  = "~/.claude/projects"   # where Claude Code writes transcripts
+code_root = "~/code"               # sessions run from here resume without a `cd`; repos are its subdirs
+log       = "worklog.jsonl"        # the event log, relative to this directory
+
+[server]
+port = 8787
+
+[catalog]
+active_hours = 24          # sessions with activity inside this window show as active
+
+[user]
+# Your own names and handles, so the summariser never lists you as a colleague.
+names = []
+
+[github]
+# PRs in this org show as repo#123; everywhere else as owner/repo#123.
+org = ""
+
+[tickets]
+# Regexes for ticket ids to pull out of prompts (Jira keys and GitHub repo#123 by default).
+patterns = ['\b[A-Z][A-Z0-9]{1,9}-\d{1,6}\b', '\b[a-z][\w.-]{1,40}#\d{1,6}\b']
+
+[enrich]
+auto           = false     # true: the web app summarises new/grown sessions on its own (costs ~1c each)
+model          = "haiku"   # any `claude --model` value
+workers        = 8
+max_budget_usd = 0.5       # per call
+# The vocabulary the summariser tags sessions with (1-4 per session). Make it yours.
+tags = ["backend", "frontend", "mobile", "infra", "data", "security", "privacy",
+        "incident", "costs", "docs", "research", "tooling", "people", "support"]

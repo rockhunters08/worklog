@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/xterm.css">
 <style>
 :root{
   --ink:#12100e; --ink2:#181511; --panel:#1b1814; --panel2:#211d18;
@@ -309,6 +310,32 @@ time{font-size:10px;color:var(--dimmer);white-space:nowrap;flex:none;width:76px;
 .closer:hover{color:var(--ink);background:var(--paper);border-color:var(--paper)}
 .ctl{padding-top:34px}
 
+/* ---------- terminal dock ---------- */
+#dock{position:fixed;left:0;right:0;bottom:0;height:46vh;background:#0c0b0a;border-top:1px solid var(--line2);
+  z-index:50;display:flex;flex-direction:column;box-shadow:0 -12px 40px rgba(0,0,0,.5)}
+#dock.max{height:calc(100vh - 8px)}
+#dock .grab{height:6px;cursor:ns-resize;background:linear-gradient(var(--line2),transparent);flex:none}
+.dockbar{display:flex;align-items:center;gap:4px;padding:4px 10px 4px 14px;border-bottom:1px solid var(--line);flex:none}
+.docktabs{display:flex;gap:3px;flex:1;min-width:0;overflow-x:auto}
+.docktab{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:transparent;color:var(--dim);
+  font-family:var(--mono);font-size:11px;padding:4px 6px 4px 10px;border-radius:2px;cursor:pointer;white-space:nowrap}
+.docktab.on{background:var(--panel2);color:var(--paper);border-color:var(--line2)}
+.docktab.dead{color:var(--dimmer);text-decoration:line-through}
+.docktab i{font-style:normal;color:var(--p1);font-size:10px}
+.docktab b{font-weight:400;color:var(--dimmer);padding:0 3px;border-radius:2px}
+.docktab b:hover{color:var(--ink);background:var(--stop)}
+.dockbar .acct{font-size:10px;color:var(--p1);letter-spacing:.06em;margin-right:8px}
+.dockbar button.dk{border:1px solid var(--line);background:transparent;color:var(--dim);font-family:var(--mono);
+  font-size:11px;padding:3px 8px;border-radius:2px;cursor:pointer}
+.dockbar button.dk:hover{color:var(--paper);border-color:var(--line2)}
+#dockbody{flex:1;min-height:0;position:relative;padding:6px 8px 4px 12px}
+#dockbody>div{position:absolute;inset:6px 8px 4px 12px;display:none}
+#dockbody>div.on{display:block}
+.xterm .xterm-viewport::-webkit-scrollbar{width:7px}
+.xterm .xterm-viewport::-webkit-scrollbar-thumb{background:var(--line2);border-radius:3px}
+body.docked main{padding-bottom:calc(46vh + 40px)}
+.cmdchip.term i{color:var(--p1)}
+
 /* ---------- toast ---------- */
 #toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,16px);opacity:0;
   background:var(--paper);color:var(--ink);padding:8px 16px;border-radius:2px;font-size:11.5px;
@@ -456,8 +483,20 @@ body[data-mode="threads"] .sessions-only{display:none !important}
   </section>
 </main>
 
+<div id="dock" hidden>
+  <div class="grab" id="dockgrab"></div>
+  <div class="dockbar">
+    <div class="docktabs" id="docktabs"></div>
+    <span class="acct" id="dockacct"></span>
+    <button class="dk" data-dock="max" title="toggle full height">&#8597;</button>
+    <button class="dk" data-dock="close" title="hide the dock; sessions keep running in tmux">hide</button>
+  </div>
+  <div id="dockbody"></div>
+</div>
 <div id="toast"></div>
 
+<script src="/static/xterm.js"></script>
+<script src="/static/xterm-addon-fit.min.js"></script>
 <script>
 const $ = s => document.querySelector(s);
 const esc = s => (s==null?"":String(s)).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -475,17 +514,20 @@ let SS = {items:[], scanning:false, done:0, total:0, error:"", checked:0};
 let SF = {view:"all", project:null, month:null, tiny:false, linked:false, active:false, q:"",
           tag:null, person:null, repo:null, sort:"activity"};
 let showReply = false;
-let openSid = null, sqTimer = null, lastSess = "", scrollOnce = true;
+let openSid = null, sqTimer = null, lastSess = "", scrollOnce = true, termOnLoad = null;
 
 /* ---------- net ---------- */
 let lastState = "";
-let pageVersion = null;
+let pageVersion = null, pageStale = false;
 function checkPage(d){
   // the server stamps every response with index.html's mtime; a change means
   // this tab is running an old copy, so fetch the new one
   if(d.page == null) return;
   if(pageVersion === null) pageVersion = d.page;
-  else if(d.page !== pageVersion && !editing && !/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)) location.reload();
+  else if(d.page !== pageVersion){
+    if(Object.keys(TERMS).length){ if(!pageStale){ pageStale = true; toast("worklog updated; reload when your terminals are done"); } return; }
+    if(!editing && !/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)) location.reload();
+  }
 }
 async function pull(){
   const txt = await (await fetch("/api/state")).text();
@@ -925,6 +967,7 @@ $("#qa").addEventListener("submit", async e => {
 });
 
 document.addEventListener("keydown", e => {
+  if(e.target.closest && e.target.closest("#dock")) return;      // the terminal owns its keys, esc included
   const typing = /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName);
   if(e.key === "Escape"){
     document.activeElement.blur();
@@ -1032,7 +1075,8 @@ function readHash(){
   const h = location.hash.slice(1);
   // root and #sessions open the catalog; #threads or a thread id (#w7) open the tracker
   if(h === "threads" || /^w\d+$/.test(h)){ MODE = "threads"; openId = h === "threads" ? null : h; }
-  else { MODE = "sessions"; openSid = h.startsWith("s/") ? h.slice(2) : null; }
+  else { MODE = "sessions"; openSid = (h.startsWith("s/") || h.startsWith("t/")) ? h.slice(2) : null;
+         if(h.startsWith("t/")) termOnLoad = h.slice(2); }   // #t/<uuid>: open its terminal too
   document.body.dataset.mode = MODE;
 }
 addEventListener("hashchange", () => { readHash(); if(MODE === "sessions") pullSessions(); else render(); });
@@ -1064,6 +1108,14 @@ async function pullSessions(force){
   renderSessions();
   if(SS.scanning) setTimeout(() => pullSessions(), 1500);   // follow a scan to its end
   else if(SS.enriching) setTimeout(() => pullSessions(), 8000);
+}
+const TOKEN = (document.querySelector('meta[name="wl-token"]')||{}).content || "";
+async function api(payload){
+  const r = await fetch("/api/event", {method:"POST", headers:{"Content-Type":"application/json", "X-WL-Token": TOKEN},
+    body: JSON.stringify(payload)});
+  const d = await r.json();
+  if(!r.ok){ toast(d.error || "failed"); return null; }
+  return d;
 }
 async function sev(payload){
   payload.q = SF.q;
@@ -1179,6 +1231,7 @@ function renderSessions(){
     html += sessionRow(r);
   }
   $("#slist").innerHTML = html;
+  if(termOnLoad){ const r = SS.items.find(x => x.sid === termOnLoad); termOnLoad = null; if(r) openTerm(r); }
   if(openSid && scrollOnce){ scrollOnce = false;
     const el = document.querySelector(`.thread[data-sid="${openSid}"]`);
     if(el) el.scrollIntoView({block:"start"}); }
@@ -1196,12 +1249,13 @@ function sessionRow(r){
         <h3 class="ttl">${esc(sname(r))}</h3>
         <button type="button" class="cmdchip" data-sact="copy" data-text="${esc(r.resume_cmd)}"
           title="click to copy">${esc(r.resume_cmd.replace(/^cd .* && /,"")).replace(/"([^"]+)"$/, '"<i>$1</i>"')}<span class="cp">copy</span></button>
+        <button type="button" class="cmdchip term" data-sact="term" title="open a terminal for this session in the page${r.account?", as "+esc(r.account):""}">&#9656; <i>term</i></button>
       </div>
       ${r.summary_ai ? `<p class="sum">${SF.q ? hiMark(r.summary_ai, SF.q) : esc(r.summary_ai)}</p>`
                      : r.ai_title && r.ai_title !== sname(r) ? `<p class="sum">${esc(r.ai_title)}</p>` : ""}
     <div class="metas">
       ${r.title && sname(r) !== r.title ? `<span class="chip name" title="session name">${esc(r.title)}</span>` : ""}
-      ${r.project !== "~/code" ? `<span class="chip proj">${esc(r.project)}</span>` : ""}
+      ${r.project !== (SS.code_root||"~/code") ? `<span class="chip proj">${esc(r.project)}</span>` : ""}
       ${r.tags.map(t=>`<span class="chip tag">#${esc(t)}</span>`).join("")}
       ${r.auto_tags.filter(t=>!r.tags.includes(t)).map(t=>`<span class="chip auto" title="auto tag">#${esc(t)}</span>`).join("")}
       ${r.people.length ? `<span class="chip ppl">with ${esc(r.people.slice(0,3).join(", "))}${r.people.length>3?" +"+(r.people.length-3):""}</span>` : ""}
@@ -1263,7 +1317,11 @@ function sessionDetail(r){
         <button type="button" class="cmdchip" data-sact="copy" data-text="${esc(r.resume_cmd)}">${esc(r.resume_cmd)}<span class="cp"> copy</span></button>
         ${r.title ? `<button type="button" class="cmdchip" data-sact="copy" data-text="${esc(r.resume_uuid_cmd)}" title="unambiguous even if the name is shared">${esc(r.resume_uuid_cmd)}<span class="cp"> copy</span></button>` : ""}
       </div></div>
+    <div class="grp"><label>Account</label>
+      <span style="font-size:11.5px;color:${r.account_known?"var(--paper)":"var(--dimmer)"}">${esc(r.account || "default login")}${r.account_known?"":" (not recorded in this session; default assumed)"}${r.account_dir?` <span style="color:var(--dimmer)">via ${esc(r.account_dir)}</span>`:""}</span></div>
     <div class="acts">
+      <button class="btn" data-sact="term">terminal here</button>
+      <button class="btn" data-sact="launch">open in ${esc(SS.terminal_app||"Terminal")}</button>
       ${r.threads.length ? r.threads.map(w=>`<button class="btn" data-sact="thread" data-w="${w}">open ${w}</button>`).join("")
                          : `<button class="btn" data-sact="newthread">start a thread</button>`}
       <button class="btn ghost" data-sact="copy" data-text="${esc(r.sid)}">copy uuid</button>
@@ -1283,6 +1341,12 @@ $("#slist").addEventListener("click", async e => {
   const r = SS.items.find(x => x.sid === sid);
   if(act === "copy"){ copy(btn.dataset.text, "copied:  " + btn.dataset.text); return; }
   if(act === "reply"){ showReply = !showReply; renderSessions(); return; }
+  if(act === "term"){ openTerm(r); return; }
+  if(act === "launch"){
+    const d = await api({op:"launch", sid});
+    if(d) toast("opened in " + (SS.terminal_app||"Terminal") + (d.tmux ? " (tmux)" : ""));
+    return;
+  }
   if(act === "enrich"){ if(await sev({op:"enrich", sid})) toast("summarising this session"); return; }
   if(act === "thread"){ openId = btn.dataset.w; setMode("threads"); return; }
   if(act === "newthread"){
@@ -1349,6 +1413,81 @@ setInterval(() => {
   if(/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)) return;
   pullSessions();
 }, 30000);
+
+/* ================= terminals in the page =================
+   One xterm.js per session, over a WebSocket to a pty on the server; with
+   tmux installed the pty is a tmux client, so closing a tab only detaches. */
+const TERMS = {};
+let dockOn = null;
+const XT_THEME = {background:"#0c0b0a", foreground:"#ece4d6", cursor:"#efa227", selectionBackground:"rgba(239,162,39,.35)",
+  black:"#1b1814", red:"#ff5c3c", green:"#5cbf9d", yellow:"#efa227", blue:"#4f9fd0", magenta:"#9b7bd8", cyan:"#5cbfbf", white:"#ece4d6",
+  brightBlack:"#6b6157", brightRed:"#ff7a5f", brightGreen:"#7dd4b4", brightYellow:"#f4b84f", brightBlue:"#6fb5e0", brightMagenta:"#b197e6", brightCyan:"#7ad4d4", brightWhite:"#ffffff"};
+
+function openTerm(r){
+  const sid = r.sid;
+  $("#dock").hidden = false; document.body.classList.add("docked");
+  if(TERMS[sid]){ activateTerm(sid); return; }
+  const el = document.createElement("div"); $("#dockbody").appendChild(el);
+  const term = new Terminal({fontFamily:"IBM Plex Mono, Menlo, monospace", fontSize:13, lineHeight:1.15,
+    cursorBlink:true, theme:XT_THEME, scrollback:5000, allowProposedApi:true});
+  const fit = new FitAddon.FitAddon(); term.loadAddon(fit); term.open(el);
+  const t = TERMS[sid] = {term, fit, el, ws:null, name:sname(r), account:r.account||"", dead:false};
+  activateTerm(sid);
+  fit.fit();
+  const ws = t.ws = new WebSocket(`ws://${location.host}/ws/term?sid=${sid}&token=${encodeURIComponent(TOKEN)}&cols=${term.cols}&rows=${term.rows}`);
+  ws.binaryType = "arraybuffer";
+  ws.onmessage = ev => term.write(new Uint8Array(ev.data));
+  ws.onclose = () => { t.dead = true; term.write("\r\n\x1b[90m[disconnected" + (SS.tmux ? "; the tmux session keeps running, open again to reattach" : "") + "]\x1b[0m\r\n"); renderDock(); };
+  ws.onerror = () => toast("terminal connection failed");
+  const enc = new TextEncoder();
+  term.onData(d => { if(ws.readyState === 1) ws.send(enc.encode(d)); });
+  term.onResize(({cols, rows}) => { if(ws.readyState === 1) ws.send(JSON.stringify({resize:[cols, rows]})); });
+  term.focus();
+}
+function activateTerm(sid){
+  dockOn = sid;
+  for(const [k, t] of Object.entries(TERMS)) t.el.classList.toggle("on", k === sid);
+  renderDock();
+  const t = TERMS[sid]; if(t){ requestAnimationFrame(() => { t.fit.fit(); t.term.focus(); }); }
+}
+function closeTerm(sid){
+  const t = TERMS[sid]; if(!t) return;
+  try{ t.ws.close(); }catch(_){}
+  t.term.dispose(); t.el.remove(); delete TERMS[sid];
+  const left = Object.keys(TERMS);
+  if(left.length) activateTerm(left[left.length-1]); else hideDock();
+}
+function hideDock(){
+  $("#dock").hidden = true; document.body.classList.remove("docked");
+  for(const sid of Object.keys(TERMS)) closeTerm(sid);
+}
+function renderDock(){
+  $("#docktabs").innerHTML = Object.entries(TERMS).map(([sid, t]) =>
+    `<span class="docktab ${sid===dockOn?"on":""} ${t.dead?"dead":""}" data-tsid="${sid}">${esc(t.name.slice(0,34))}${t.account?` <i>${esc(t.account.split("@")[0])}</i>`:""}<b data-tclose="${sid}" title="close tab">&times;</b></span>`).join("");
+  const t = TERMS[dockOn];
+  $("#dockacct").textContent = t && t.account ? "as " + t.account : "";
+}
+$("#docktabs").addEventListener("click", e => {
+  const x = e.target.closest("[data-tclose]"); if(x){ closeTerm(x.dataset.tclose); return; }
+  const tab = e.target.closest("[data-tsid]"); if(tab) activateTerm(tab.dataset.tsid);
+});
+$("#dock").addEventListener("click", e => {
+  const b = e.target.closest("[data-dock]"); if(!b) return;
+  if(b.dataset.dock === "close") hideDock();
+  if(b.dataset.dock === "max"){ $("#dock").classList.toggle("max"); fitAll(); }
+});
+function fitAll(){ for(const t of Object.values(TERMS)) if(t.el.classList.contains("on")) t.fit.fit(); }
+addEventListener("resize", fitAll);
+// drag the top edge to resize the dock
+(() => {
+  let startY = 0, startH = 0;
+  const g = $("#dockgrab");
+  g.addEventListener("mousedown", e => { startY = e.clientY; startH = $("#dock").offsetHeight; e.preventDefault();
+    const move = ev => { const h = Math.max(160, Math.min(innerHeight - 40, startH + (startY - ev.clientY)));
+      $("#dock").style.height = h + "px"; $("#dock").classList.remove("max"); document.body.style.paddingBottom = (h + 40) + "px"; };
+    const up = () => { removeEventListener("mousemove", move); removeEventListener("mouseup", up); fitAll(); };
+    addEventListener("mousemove", move); addEventListener("mouseup", up); });
+})();
 
 if(MODE === "sessions"){ $("#search").placeholder = "search prompts  /"; pullSessions(); }
 pull();

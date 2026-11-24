@@ -5,12 +5,26 @@
 projects  = "~/.claude/projects"   # where Claude Code writes transcripts
 code_root = "~/code"               # sessions run from here resume without a `cd`; repos are its subdirs
 log       = "worklog.jsonl"        # the event log, relative to this directory
+cache     = "sessions-cache.json"  # scanned-transcript cache, rebuilt on demand
 
 [server]
 port = 8787
 
 [catalog]
 active_hours = 24          # sessions with activity inside this window show as active
+
+[launch]
+terminal = "Terminal"      # "Terminal" (macOS), "iTerm", or "command"
+command  = ""              # with terminal = "command": e.g. 'open -na Ghostty --args -e {cmd}'
+tmux     = true            # run sessions inside tmux when installed; closing a window then detaches
+
+[accounts]
+# The login in the default config dir (~/.claude). Other logins each get their own
+# config dir (`./wl account add you@example.com`), and a session resumes under the
+# account it last ran with.
+default = ""
+[accounts.dirs]
+# "you+work@example.com" = "~/.claude-accounts/work"
 
 [user]
 # Your own names and handles, so the summariser never lists you as a colleague.

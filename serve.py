@@ -7,7 +7,9 @@
 import argparse
 import datetime
 import json
+import mimetypes
 import os
+import secrets
 import subprocess
 import sys
 import threading
@@ -19,10 +21,17 @@ from urllib.parse import parse_qs
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import catalog
 import store
+import term
 from config import CFG
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 PAGE = os.path.join(HERE, "index.html")
+STATIC = os.path.join(HERE, "static")
+# Anything that runs a command needs this token. It is minted per server start
+# and injected into index.html, which another origin can request but never
+# read, so a web page you happen to have open cannot reach the spawn endpoints.
+TOKEN = secrets.token_urlsafe(24)
+PORT = [CFG["server"]["port"]]
 
 
 def page_version():
@@ -117,6 +126,8 @@ def sessions(q="", force=False):
             "projects_dir": catalog.PROJECTS, "github_org": CFG["github"]["org"],
             "unsummarised": stale, "enriching": enriching, "enrich_auto": CFG["enrich"]["auto"],
             "active_hours": CFG["catalog"]["active_hours"], "page": page_version(),
+            "code_root": catalog.CODE_ROOT_SHORT, "tmux": bool(term.tmux()),
+            "terminal_app": CFG["launch"]["terminal"],
             "today": datetime.date.today().isoformat()}
 
 
@@ -144,6 +155,48 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         pass  # quiet
 
+    def _same_origin(self):
+        origin = self.headers.get("Origin")
+        if not origin:
+            return True
+        return origin in ("http://127.0.0.1:%d" % PORT[0], "http://localhost:%d" % PORT[0])
+
+    def _authorised(self, qs=None):
+        tok = self.headers.get("X-WL-Token") or (qs or {}).get("token", [""])[0]
+        return self._same_origin() and secrets.compare_digest(tok or "", TOKEN)
+
+    def _static(self, path):
+        name = os.path.normpath(path[len("/static/"):])
+        full = os.path.join(STATIC, name)
+        if name.startswith("..") or not os.path.isfile(full):
+            return self._send(404, {"error": "not found"})
+        ctype = mimetypes.guess_type(full)[0] or "application/octet-stream"
+        with open(full, "rb") as f:
+            body = f.read()
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "max-age=86400")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _terminal(self, qs):
+        """GET /ws/term?sid=..&token=..&cols=..&rows=..: a WebSocket pty."""
+        if not self._authorised(qs):
+            return self._send(403, {"error": "forbidden"})
+        sid = qs.get("sid", [""])[0]
+        e = catalog.ensure()[0].get(sid)
+        if not e:
+            return self._send(404, {"error": "no such session"})
+        argv, cwd, env = catalog.launch_argv(e)
+        try:
+            sock = term.handshake(self)
+        except ValueError as ex:
+            return self._send(400, {"error": str(ex)})
+        self.close_connection = True
+        term.serve_pty(sock, sid, argv, cwd, env,
+                       cols=int(qs.get("cols", ["120"])[0]), rows=int(qs.get("rows", ["36"])[0]))
+
     def _send(self, code, body, ctype="application/json"):
         if isinstance(body, (dict, list)):
             body = json.dumps(body)
@@ -160,9 +213,14 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/", "/index.html"):
             try:
                 with open(PAGE) as f:
-                    return self._send(200, f.read(), "text/html")
+                    html = f.read().replace("<head>", '<head>\n<meta name="wl-token" content="%s">' % TOKEN, 1)
+                    return self._send(200, html, "text/html")
             except OSError:
                 return self._send(500, {"error": "index.html missing"})
+        if path.startswith("/static/"):
+            return self._static(path)
+        if path == "/ws/term":
+            return self._terminal(parse_qs(self.path.split("?", 1)[-1]) if "?" in self.path else {})
         if path == "/api/state":
             return self._send(200, state())
         if path == "/api/sessions":
@@ -192,6 +250,19 @@ class Handler(BaseHTTPRequestHandler):
             if err:
                 return self._send(400, {"error": err})
             return self._send(200, sessions(q=ev.get("q", "")))
+        if op == "launch":
+            if not self._authorised():
+                return self._send(403, {"error": "forbidden"})
+            sid = (ev.get("sid") or "").strip()
+            e = catalog.ensure()[0].get(sid)
+            if not e:
+                return self._send(404, {"error": "no such session"})
+            argv, cwd, env = catalog.launch_argv(e)
+            try:
+                line = term.open_in_terminal(sid, argv, cwd, env)
+            except Exception as ex:
+                return self._send(500, {"error": str(ex)[:300]})
+            return self._send(200, {"ok": True, "command": line, "tmux": bool(term.tmux())})
         if op == "enrich":
             sid = (ev.get("sid") or "").strip()
             if sid and not catalog.UUID.match(sid):
@@ -291,7 +362,9 @@ def main():
     ap.add_argument("-o", "--open", action="store_true", help="open a browser")
     a = ap.parse_args()
     url = "http://127.0.0.1:%d/" % a.port
+    PORT[0] = a.port
     srv = ThreadingHTTPServer(("127.0.0.1", a.port), Handler)
+    srv.daemon_threads = True
     print("worklog  %s\nlog      %s\nCtrl-C to stop" % (url, store.LOG))
     if a.open:
         webbrowser.open(url)

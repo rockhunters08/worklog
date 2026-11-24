@@ -21,7 +21,7 @@ from config import CFG
 HERE = os.path.dirname(os.path.realpath(__file__))
 PROJECTS = CFG["paths"]["projects"]
 CODE_ROOT = CFG["paths"]["code_root"]
-CACHE = os.path.join(HERE, "sessions-cache.json")
+CACHE = CFG["paths"]["cache"]
 HOME = os.path.expanduser("~")
 
 PROMPT_CHARS = 400     # per prompt kept for search
@@ -38,7 +38,7 @@ def _empty(sid, path):
             "cwd": "", "size": 0, "mtime": 0, "offset": 0, "created": "", "last": "",
             "titles": [], "ai_title": "", "summary": "", "first_prompt": "",
             "n_prompts": 0, "prompts": [], "branch": "", "prs": [], "repos": {},
-            "issues": [], "days": [], "last_reply": ""}
+            "issues": [], "days": [], "last_reply": "", "account": ""}
 
 
 def _text(content):
@@ -51,6 +51,7 @@ def _text(content):
 
 
 _REMINDER = re.compile(r"<system-reminder>.*?</system-reminder>", re.S)
+_EMAIL = re.compile(rb'"userEmail":"The user\'s email address is ([^\s"\\]+?)\.?[\s"\\]')
 _CODE_PATH = re.compile(rb'"file_path":\s*"' + re.escape(CODE_ROOT.encode()) + rb'/([A-Za-z0-9_.-]+)/')
 _ISSUE = re.compile("|".join("(?:%s)" % p for p in CFG["tickets"]["patterns"]))
 
@@ -91,6 +92,11 @@ def _parse(entry, fh):
                 continue
             if r.get("type") == "ai-title" and r.get("aiTitle"):
                 entry["ai_title"] = r["aiTitle"]
+            continue
+        if b'"userEmail"' in line:
+            m = _EMAIL.search(line)
+            if m:
+                entry["account"] = m.group(1).decode().lower()   # last one wins: the login it last ran under
             continue
         if b'"pr-link"' in line:
             try:
@@ -297,6 +303,29 @@ def resume_cmd(e, by_uuid=False):
     return cmd if proj in (CODE_ROOT_SHORT, "?") else "cd %s && %s" % (proj, cmd)
 
 
+def account_of(e):
+    """The login the session last ran under, else the configured default."""
+    return e.get("account") or CFG["accounts"]["default"]
+
+
+def config_dir_for(email):
+    """CLAUDE_CONFIG_DIR for an account, or '' for the default login."""
+    return CFG["accounts"]["dirs"].get((email or "").lower(), "")
+
+
+def launch_argv(e):
+    """argv, cwd and env additions to resume this session under its own account.
+    Always by uuid, so a shared name can never pick the wrong session."""
+    cwd = e.get("cwd") or CODE_ROOT
+    if not os.path.isdir(cwd):                     # the directory may be gone since
+        cwd = CODE_ROOT if os.path.isdir(CODE_ROOT) else HOME
+    env = {}
+    d = config_dir_for(account_of(e))
+    if d:
+        env["CLAUDE_CONFIG_DIR"] = d
+    return ["claude", "--resume", e["sid"]], cwd, env
+
+
 _PR = re.compile(r"^https://github\.com/([^/]+)/([^/]+)/pull/(\d+)$")
 
 
@@ -400,6 +429,8 @@ def rows(cat, meta, threads, q=""):
             "created": e.get("created", ""), "last": e.get("last", ""),
             "size": e.get("size", 0), "path": e.get("path", ""),
             "tiny": is_tiny(e), "active": is_active(e, now),
+            "account": account_of(e), "account_known": bool(e.get("account")),
+            "account_dir": config_dir_for(account_of(e)), "cwd": e.get("cwd") or CODE_ROOT,
             "shared": len(by_title.get(t, [])) - 1 if t else 0,
             "label": m.get("label", ""), "auto_label": m.get("auto_label", ""),
             "tags": m.get("tags", []), "note": m.get("note", ""),

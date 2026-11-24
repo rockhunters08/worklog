@@ -17,8 +17,26 @@ DEFAULTS = {
         "code_root": "~/code",
         # the append-only event log; relative paths are taken from this directory
         "log": "worklog.jsonl",
+        # the scanned-transcript cache, rebuilt on demand
+        "cache": "sessions-cache.json",
     },
     "server": {"port": 8787},
+    "launch": {
+        # how "open in terminal" starts a session: "Terminal" (macOS Terminal.app),
+        # "iTerm", or "command" to run `command` with {cmd} and {cwd} substituted
+        "terminal": "Terminal",
+        "command": "",
+        # keep sessions inside tmux (when installed) so a closed window or tab
+        # detaches instead of ending the conversation
+        "tmux": True,
+    },
+    "accounts": {
+        # the login in the default config dir (~/.claude); shown when a session
+        # has no account recorded
+        "default": "",
+        # email -> CLAUDE_CONFIG_DIR for every other login, see `wl account add`
+        "dirs": {},
+    },
     "catalog": {
         # a session with activity inside this window shows as active
         "active_hours": 24,
@@ -71,7 +89,10 @@ def load(path=PATH):
     p["projects"] = os.path.expanduser(p["projects"])
     p["code_root"] = os.path.expanduser(p["code_root"]).rstrip("/")
     p["log"] = os.environ.get("WL_LOG") or os.path.join(HERE, os.path.expanduser(p["log"]))
+    p["cache"] = os.path.join(HERE, os.path.expanduser(p["cache"]))
     cfg["user"]["names"] = {n.strip().lower() for n in cfg["user"]["names"] if n.strip()}
+    cfg["accounts"]["dirs"] = {k.lower(): os.path.expanduser(v) for k, v in cfg["accounts"]["dirs"].items()}
+    cfg["accounts"]["default"] = cfg["accounts"]["default"].lower()
     return cfg
 
 

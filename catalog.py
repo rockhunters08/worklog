@@ -204,7 +204,8 @@ def scan(progress=None):
         except OSError:
             continue
         e = cat.get(sid)
-        if e is None or e.get("path") != path or st.st_size < e.get("offset", 0):
+        if e is None or e.get("path") != path or st.st_size < e.get("offset", 0) \
+                or "account" not in e:                 # cache written before a field existed: reread
             e = _empty(sid, path)
         if st.st_size > e["offset"] or st.st_mtime != e["mtime"]:
             try:
@@ -303,14 +304,36 @@ def resume_cmd(e, by_uuid=False):
     return cmd if proj in (CODE_ROOT_SHORT, "?") else "cd %s && %s" % (proj, cmd)
 
 
+class AccountError(Exception):
+    """A session recorded a login this machine has no config dir for."""
+
+
 def account_of(e):
     """The login the session last ran under, else the configured default."""
     return e.get("account") or CFG["accounts"]["default"]
 
 
 def config_dir_for(email):
-    """CLAUDE_CONFIG_DIR for an account, or '' for the default login."""
-    return CFG["accounts"]["dirs"].get((email or "").lower(), "")
+    """CLAUDE_CONFIG_DIR for an account. The default login gets the default
+    dir explicitly, so a worklog started from an alternate-account shell
+    cannot leak that account into default sessions. Raises AccountError for a
+    recorded login with no mapping rather than silently using another one."""
+    email = (email or "").lower()
+    if not email or email == CFG["accounts"]["default"]:
+        return CFG["paths"]["claude_dir"]
+    d = CFG["accounts"]["dirs"].get(email)
+    if not d:
+        raise AccountError("no config dir for %s; run `wl account add %s` or set accounts.default" % (email, email))
+    return d
+
+
+def account_state(e):
+    """'default' | 'mapped' | 'unmapped' for the UI and CLI."""
+    try:
+        config_dir_for(account_of(e))
+    except AccountError:
+        return "unmapped"
+    return "mapped" if e.get("account") and e["account"] != CFG["accounts"]["default"] else "default"
 
 
 def launch_argv(e):
@@ -319,10 +342,7 @@ def launch_argv(e):
     cwd = e.get("cwd") or CODE_ROOT
     if not os.path.isdir(cwd):                     # the directory may be gone since
         cwd = CODE_ROOT if os.path.isdir(CODE_ROOT) else HOME
-    env = {}
-    d = config_dir_for(account_of(e))
-    if d:
-        env["CLAUDE_CONFIG_DIR"] = d
+    env = {"CLAUDE_CONFIG_DIR": config_dir_for(account_of(e))}
     return ["claude", "--resume", e["sid"]], cwd, env
 
 
@@ -430,7 +450,8 @@ def rows(cat, meta, threads, q=""):
             "size": e.get("size", 0), "path": e.get("path", ""),
             "tiny": is_tiny(e), "active": is_active(e, now),
             "account": account_of(e), "account_known": bool(e.get("account")),
-            "account_dir": config_dir_for(account_of(e)), "cwd": e.get("cwd") or CODE_ROOT,
+            "account_state": account_state(e),
+            "account_dir": CFG["accounts"]["dirs"].get(account_of(e), ""), "cwd": e.get("cwd") or CODE_ROOT,
             "shared": len(by_title.get(t, [])) - 1 if t else 0,
             "label": m.get("label", ""), "auto_label": m.get("auto_label", ""),
             "tags": m.get("tags", []), "note": m.get("note", ""),

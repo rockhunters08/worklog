@@ -166,9 +166,9 @@ class Handler(BaseHTTPRequestHandler):
         return self._same_origin() and secrets.compare_digest(tok or "", TOKEN)
 
     def _static(self, path):
-        name = os.path.normpath(path[len("/static/"):])
-        full = os.path.join(STATIC, name)
-        if name.startswith("..") or not os.path.isfile(full):
+        root = os.path.realpath(STATIC)
+        full = os.path.realpath(os.path.join(root, path[len("/static/"):].lstrip("/")))
+        if not full.startswith(root + os.sep) or not os.path.isfile(full):
             return self._send(404, {"error": "not found"})
         ctype = mimetypes.guess_type(full)[0] or "application/octet-stream"
         with open(full, "rb") as f:
@@ -188,7 +188,10 @@ class Handler(BaseHTTPRequestHandler):
         e = catalog.ensure()[0].get(sid)
         if not e:
             return self._send(404, {"error": "no such session"})
-        argv, cwd, env = catalog.launch_argv(e)
+        try:
+            argv, cwd, env = catalog.launch_argv(e)
+        except catalog.AccountError as ex:
+            return self._send(409, {"error": str(ex)})
         try:
             sock = term.handshake(self)
         except ValueError as ex:
@@ -257,9 +260,11 @@ class Handler(BaseHTTPRequestHandler):
             e = catalog.ensure()[0].get(sid)
             if not e:
                 return self._send(404, {"error": "no such session"})
-            argv, cwd, env = catalog.launch_argv(e)
             try:
+                argv, cwd, env = catalog.launch_argv(e)
                 line = term.open_in_terminal(sid, argv, cwd, env)
+            except catalog.AccountError as ex:
+                return self._send(409, {"error": str(ex)})
             except Exception as ex:
                 return self._send(500, {"error": str(ex)[:300]})
             return self._send(200, {"ok": True, "command": line, "tmux": bool(term.tmux())})

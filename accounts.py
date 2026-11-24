@@ -62,17 +62,29 @@ def login_cmd(email, config_dir):
 
 
 def record(email, config_dir):
-    """Append the mapping to worklog.toml without disturbing the rest of it."""
+    """Write the mapping into worklog.toml, replacing an existing line for the
+    same email so repeated adds never produce a duplicate TOML key. Refuses a
+    dir that another email already uses, since two logins in one dir would
+    overwrite each other's credentials."""
     email = email.lower()
+    short = config_dir.replace(os.path.expanduser("~"), "~", 1)
+    for other, d in CFG["accounts"]["dirs"].items():
+        if other != email and os.path.realpath(d) == os.path.realpath(config_dir):
+            raise ValueError("%s is already the config dir for %s; pick another alias" % (short, other))
+    if email == CFG["accounts"]["default"]:
+        raise ValueError("%s is the default login (accounts.default); it needs no dir" % email)
     text = open(CONFIG_PATH).read() if os.path.exists(CONFIG_PATH) else ""
-    line = '"%s" = "%s"\n' % (email, config_dir.replace(os.path.expanduser("~"), "~", 1))
+    line = '"%s" = "%s"' % (email, short)
+    lines = [l for l in text.split("\n") if not l.strip().startswith('"%s"' % email)]
+    text = "\n".join(lines)
     if "[accounts.dirs]" in text:
         head, tail = text.split("[accounts.dirs]", 1)
-        text = head + "[accounts.dirs]\n" + line + tail.lstrip("\n")
+        text = head + "[accounts.dirs]\n" + line + "\n" + tail.lstrip("\n")
     else:
-        text = text.rstrip("\n") + "\n\n[accounts.dirs]\n" + line
+        text = text.rstrip("\n") + "\n\n[accounts.dirs]\n" + line + "\n"
     with open(CONFIG_PATH, "w") as f:
         f.write(text)
+    CFG["accounts"]["dirs"][email] = config_dir
 
 
 def listing():

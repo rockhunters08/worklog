@@ -335,7 +335,9 @@ def cmd_session(a):
         print("threads  : %s" % " ".join(r["threads"]))
     print("activity : %s .. %s  (%d prompts, %d KB)" % (short(r["created"]), short(r["last"]),
                                                        r["n_prompts"], r["size"] // 1024))
-    print("account  : %s%s" % (r["account"] or "(default)", "" if r["account_known"] else "  (not recorded; default assumed)"))
+    print("account  : %s%s" % (r["account"] or "(default)",
+          "" if r["account_known"] else "  (not recorded; default assumed)") +
+          ("  NO CONFIG DIR: run `wl account add %s`" % r["account"] if r["account_state"] == "unmapped" else ""))
     print("resume   : %s" % r["resume_cmd"])
     if r["title"]:
         print("by uuid  : %s" % r["resume_uuid_cmd"])
@@ -367,7 +369,10 @@ def cmd_launch(a):
     """Open the session in the configured terminal, under its own account."""
     cat = catalog.scan()
     e = pick_session(cat, a.key)
-    argv, cwd, env = catalog.launch_argv(e)
+    try:
+        argv, cwd, env = catalog.launch_argv(e)
+    except catalog.AccountError as ex:
+        sys.exit("wl: %s" % ex)
     if a.print_only:
         argv, cwd, env = term.wrapped_argv(e["sid"], argv, cwd, env)
         print(term.shell_cmd(argv, cwd, env))
@@ -388,9 +393,13 @@ def cmd_account(a):
     if a.what == "add":
         if not a.email:
             sys.exit("wl account add <email> [alias]")
-        alias = a.alias or a.email.split("@")[0].replace("+", "-")
-        d = accounts.make_dir(alias)
-        accounts.record(a.email, d)
+        alias = a.alias or a.email.replace("@", "-at-").replace("+", "-")
+        d = os.path.join(accounts.ACCOUNTS_ROOT, alias)
+        try:
+            accounts.record(a.email, d)             # validate before touching the filesystem
+        except ValueError as ex:
+            sys.exit("wl: %s" % ex)
+        accounts.make_dir(alias)
         print("account dir %s (symlinks over ~/.claude); recorded in %s" % (d, accounts.CONFIG_PATH))
         print("now log it in, once:\n\n  %s\n" % accounts.login_cmd(a.email, d))
         return

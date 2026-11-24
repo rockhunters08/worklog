@@ -10,6 +10,8 @@ PATH = os.environ.get("WL_CONFIG", os.path.join(HERE, "worklog.toml"))
 
 DEFAULTS = {
     "paths": {
+        # the default Claude Code config dir (its login is accounts.default)
+        "claude_dir": "~/.claude",
         # where Claude Code keeps transcripts; one directory per project
         "projects": "~/.claude/projects",
         # sessions started under here are resumed without a `cd` prefix, and
@@ -86,6 +88,7 @@ def load(path=PATH):
         with open(path, "rb") as f:
             _merge(cfg, tomllib.load(f))
     p = cfg["paths"]
+    p["claude_dir"] = os.path.expanduser(p["claude_dir"]).rstrip("/")
     p["projects"] = os.path.expanduser(p["projects"])
     p["code_root"] = os.path.expanduser(p["code_root"]).rstrip("/")
     p["log"] = os.environ.get("WL_LOG") or os.path.join(HERE, os.path.expanduser(p["log"]))

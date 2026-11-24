@@ -2,6 +2,7 @@
 # Every key is optional; the values shown are the defaults.
 
 [paths]
+claude_dir = "~/.claude"           # the default Claude Code config dir; its login is accounts.default
 projects  = "~/.claude/projects"   # where Claude Code writes transcripts
 code_root = "~/code"               # sessions run from here resume without a `cd`; repos are its subdirs
 log       = "worklog.jsonl"        # the event log, relative to this directory

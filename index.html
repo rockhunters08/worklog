@@ -314,16 +314,20 @@ time{font-size:10px;color:var(--dimmer);white-space:nowrap;flex:none;width:76px;
 #dock{position:fixed;left:0;right:0;bottom:0;height:46vh;background:#0c0b0a;border-top:1px solid var(--line2);
   z-index:50;display:flex;flex-direction:column;box-shadow:0 -12px 40px rgba(0,0,0,.5)}
 #dock.max{height:calc(100vh - 8px)}
+#dock[hidden]{display:none}
 #dock .grab{height:6px;cursor:ns-resize;background:linear-gradient(var(--line2),transparent);flex:none}
 .dockbar{display:flex;align-items:center;gap:4px;padding:4px 10px 4px 14px;border-bottom:1px solid var(--line);flex:none}
 .docktabs{display:flex;gap:3px;flex:1;min-width:0;overflow-x:auto}
-.docktab{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:transparent;color:var(--dim);
-  font-family:var(--mono);font-size:11px;padding:4px 6px 4px 10px;border-radius:2px;cursor:pointer;white-space:nowrap}
-.docktab.on{background:var(--panel2);color:var(--paper);border-color:var(--line2)}
-.docktab.dead{color:var(--dimmer);text-decoration:line-through}
+.docktab{display:flex;align-items:stretch;border:1px solid var(--line);border-radius:2px;white-space:nowrap}
+.docktab button{border:none;background:transparent;color:var(--dim);font-family:var(--mono);font-size:11px;cursor:pointer}
+.docktab button.pick{padding:4px 8px 4px 10px}
+.docktab button.x{padding:4px 7px;color:var(--dimmer)}
+.docktab button:focus-visible{outline:1px solid var(--p1);outline-offset:-1px}
+.docktab.on{background:var(--panel2);border-color:var(--line2)}
+.docktab.on button.pick{color:var(--paper)}
+.docktab.dead button.pick{color:var(--dimmer);text-decoration:line-through}
 .docktab i{font-style:normal;color:var(--p1);font-size:10px}
-.docktab b{font-weight:400;color:var(--dimmer);padding:0 3px;border-radius:2px}
-.docktab b:hover{color:var(--ink);background:var(--stop)}
+.docktab button.x:hover{color:var(--ink);background:var(--stop)}
 .dockbar .acct{font-size:10px;color:var(--p1);letter-spacing:.06em;margin-right:8px}
 .dockbar button.dk{border:1px solid var(--line);background:transparent;color:var(--dim);font-family:var(--mono);
   font-size:11px;padding:3px 8px;border-radius:2px;cursor:pointer}
@@ -1318,7 +1322,7 @@ function sessionDetail(r){
         ${r.title ? `<button type="button" class="cmdchip" data-sact="copy" data-text="${esc(r.resume_uuid_cmd)}" title="unambiguous even if the name is shared">${esc(r.resume_uuid_cmd)}<span class="cp"> copy</span></button>` : ""}
       </div></div>
     <div class="grp"><label>Account</label>
-      <span style="font-size:11.5px;color:${r.account_known?"var(--paper)":"var(--dimmer)"}">${esc(r.account || "default login")}${r.account_known?"":" (not recorded in this session; default assumed)"}${r.account_dir?` <span style="color:var(--dimmer)">via ${esc(r.account_dir)}</span>`:""}</span></div>
+      <span style="font-size:11.5px;color:${r.account_state==="unmapped"?"var(--p0)":r.account_known?"var(--paper)":"var(--dimmer)"}">${esc(r.account || "default login")}${r.account_known?"":" (not recorded in this session; default assumed)"}${r.account_dir?` <span style="color:var(--dimmer)">via ${esc(r.account_dir)}</span>`:""}${r.account_state==="unmapped"?` · no config dir for this login; <code>wl account add ${esc(r.account)}</code> first`:""}</span></div>
     <div class="acts">
       <button class="btn" data-sact="term">terminal here</button>
       <button class="btn" data-sact="launch">open in ${esc(SS.terminal_app||"Terminal")}</button>
@@ -1426,6 +1430,7 @@ const XT_THEME = {background:"#0c0b0a", foreground:"#ece4d6", cursor:"#efa227", 
 function openTerm(r){
   const sid = r.sid;
   $("#dock").hidden = false; document.body.classList.add("docked");
+  if(TERMS[sid] && TERMS[sid].dead) closeTerm(sid, true);     // a dead tab is replaced, not refocused
   if(TERMS[sid]){ activateTerm(sid); return; }
   const el = document.createElement("div"); $("#dockbody").appendChild(el);
   const term = new Terminal({fontFamily:"IBM Plex Mono, Menlo, monospace", fontSize:13, lineHeight:1.15,
@@ -1450,10 +1455,11 @@ function activateTerm(sid){
   renderDock();
   const t = TERMS[sid]; if(t){ requestAnimationFrame(() => { t.fit.fit(); t.term.focus(); }); }
 }
-function closeTerm(sid){
+function closeTerm(sid, keepDock){
   const t = TERMS[sid]; if(!t) return;
   try{ t.ws.close(); }catch(_){}
   t.term.dispose(); t.el.remove(); delete TERMS[sid];
+  if(keepDock) return;
   const left = Object.keys(TERMS);
   if(left.length) activateTerm(left[left.length-1]); else hideDock();
 }
@@ -1463,7 +1469,9 @@ function hideDock(){
 }
 function renderDock(){
   $("#docktabs").innerHTML = Object.entries(TERMS).map(([sid, t]) =>
-    `<span class="docktab ${sid===dockOn?"on":""} ${t.dead?"dead":""}" data-tsid="${sid}">${esc(t.name.slice(0,34))}${t.account?` <i>${esc(t.account.split("@")[0])}</i>`:""}<b data-tclose="${sid}" title="close tab">&times;</b></span>`).join("");
+    `<span class="docktab ${sid===dockOn?"on":""} ${t.dead?"dead":""}" role="tab" aria-selected="${sid===dockOn}">
+       <button type="button" class="pick" data-tsid="${sid}">${esc(t.name.slice(0,34))}${t.account?` <i>${esc(t.account.split("@")[0])}</i>`:""}</button>
+       <button type="button" class="x" data-tclose="${sid}" aria-label="close terminal for ${esc(t.name)}" title="close tab">&times;</button></span>`).join("");
   const t = TERMS[dockOn];
   $("#dockacct").textContent = t && t.account ? "as " + t.account : "";
 }

@@ -338,9 +338,12 @@ def cmd_session(a):
     print("account  : %s%s" % (r["account"] or "(default)",
           "" if r["account_known"] else "  (not recorded; default assumed)") +
           ("  NO CONFIG DIR: run `wl account add %s`" % r["account"] if r["account_state"] == "unmapped" else ""))
-    print("resume   : %s" % r["resume_cmd"])
-    if r["title"]:
-        print("by uuid  : %s" % r["resume_uuid_cmd"])
+    if r["resume_error"]:
+        print("resume   : (none) %s" % r["resume_error"])
+    else:
+        print("resume   : %s" % r["resume_cmd"])
+        if r["title"]:
+            print("by uuid  : %s" % r["resume_uuid_cmd"])
     if r["shared"]:
         print("NOTE     : %d other session%s carry the name %r; by-name resume picks one of them"
               % (r["shared"], "" if r["shared"] == 1 else "s", r["title"]))

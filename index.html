@@ -1251,8 +1251,9 @@ function sessionRow(r){
     <div class="head">
       <div class="top">
         <h3 class="ttl">${esc(sname(r))}</h3>
-        <button type="button" class="cmdchip" data-sact="copy" data-text="${esc(r.resume_cmd)}"
-          title="click to copy">${esc(r.resume_cmd.replace(/^cd .* && /,"")).replace(/"([^"]+)"$/, '"<i>$1</i>"')}<span class="cp">copy</span></button>
+        ${r.resume_error ? `<span class="cmdchip none" title="${esc(r.resume_error)}">no config dir for ${esc(r.account)}</span>`
+        : `<button type="button" class="cmdchip" data-sact="copy" data-text="${esc(r.resume_cmd)}"
+          title="click to copy">${esc(r.resume_cmd.replace(/^cd .* && /,"").replace(/^CLAUDE_CONFIG_DIR=\S+ /,"")).replace(/"([^"]+)"$/, '"<i>$1</i>"')}${r.account_state==="mapped"?` <i style="color:var(--dim)">as ${esc(r.account.split("@")[0])}</i>`:""}<span class="cp">copy</span></button>`}
         <button type="button" class="cmdchip term" data-sact="term" title="open a terminal for this session in the page${r.account?", as "+esc(r.account):""}">&#9656; <i>term</i></button>
       </div>
       ${r.summary_ai ? `<p class="sum">${SF.q ? hiMark(r.summary_ai, SF.q) : esc(r.summary_ai)}</p>`
@@ -1318,8 +1319,9 @@ function sessionDetail(r){
       <form data-sact="note"><textarea name="note" placeholder="anything worth remembering about it">${esc(r.note)}</textarea></form></div>
     <div class="grp"><label>Resume</label>
       <div class="cmdstack">
+        ${r.resume_error ? `<span class="cmdchip none">${esc(r.resume_error)}</span>` : `
         <button type="button" class="cmdchip" data-sact="copy" data-text="${esc(r.resume_cmd)}">${esc(r.resume_cmd)}<span class="cp"> copy</span></button>
-        ${r.title ? `<button type="button" class="cmdchip" data-sact="copy" data-text="${esc(r.resume_uuid_cmd)}" title="unambiguous even if the name is shared">${esc(r.resume_uuid_cmd)}<span class="cp"> copy</span></button>` : ""}
+        ${r.title ? `<button type="button" class="cmdchip" data-sact="copy" data-text="${esc(r.resume_uuid_cmd)}" title="unambiguous even if the name is shared">${esc(r.resume_uuid_cmd)}<span class="cp"> copy</span></button>` : ""}`}
       </div></div>
     <div class="grp"><label>Account</label>
       <span style="font-size:11.5px;color:${r.account_state==="unmapped"?"var(--p0)":r.account_known?"var(--paper)":"var(--dimmer)"}">${esc(r.account || "default login")}${r.account_known?"":" (not recorded in this session; default assumed)"}${r.account_dir?` <span style="color:var(--dimmer)">via ${esc(r.account_dir)}</span>`:""}${r.account_state==="unmapped"?` · no config dir for this login; <code>wl account add ${esc(r.account)}</code> first`:""}</span></div>
@@ -1434,7 +1436,7 @@ function openTerm(r){
   if(TERMS[sid]){ activateTerm(sid); return; }
   const el = document.createElement("div"); $("#dockbody").appendChild(el);
   const term = new Terminal({fontFamily:"IBM Plex Mono, Menlo, monospace", fontSize:13, lineHeight:1.15,
-    cursorBlink:true, theme:XT_THEME, scrollback:5000, allowProposedApi:true});
+    cursorBlink:true, theme:XT_THEME, scrollback:5000, allowProposedApi:true, screenReaderMode:true});
   const fit = new FitAddon.FitAddon(); term.loadAddon(fit); term.open(el);
   const t = TERMS[sid] = {term, fit, el, ws:null, name:sname(r), account:r.account||"", dead:false};
   activateTerm(sid);
@@ -1464,7 +1466,9 @@ function closeTerm(sid, keepDock){
   if(left.length) activateTerm(left[left.length-1]); else hideDock();
 }
 function hideDock(){
-  $("#dock").hidden = true; document.body.classList.remove("docked");
+  const d = $("#dock");
+  d.hidden = true; d.classList.remove("max"); d.style.height = ""; delete d.dataset.h;
+  document.body.classList.remove("docked"); document.body.style.paddingBottom = "";
   for(const sid of Object.keys(TERMS)) closeTerm(sid);
 }
 function renderDock(){
@@ -1482,7 +1486,12 @@ $("#docktabs").addEventListener("click", e => {
 $("#dock").addEventListener("click", e => {
   const b = e.target.closest("[data-dock]"); if(!b) return;
   if(b.dataset.dock === "close") hideDock();
-  if(b.dataset.dock === "max"){ $("#dock").classList.toggle("max"); fitAll(); }
+  if(b.dataset.dock === "max"){
+    const d = $("#dock"), max = d.classList.toggle("max");
+    if(max){ d.dataset.h = d.style.height || ""; d.style.height = ""; document.body.style.paddingBottom = ""; }
+    else if(d.dataset.h){ d.style.height = d.dataset.h; document.body.style.paddingBottom = (parseInt(d.dataset.h) + 40) + "px"; }
+    fitAll();
+  }
 });
 function fitAll(){ for(const t of Object.values(TERMS)) if(t.el.classList.contains("on")) t.fit.fit(); }
 addEventListener("resize", fitAll);

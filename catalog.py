@@ -13,6 +13,7 @@ import glob
 import json
 import os
 import re
+import shlex
 import threading
 import time
 
@@ -298,10 +299,27 @@ def is_tiny(e):
 
 
 def resume_cmd(e, by_uuid=False):
+    """The copyable command. Carries the account's CLAUDE_CONFIG_DIR when the
+    session ran under a non-default login, so pasting it into another
+    account's shell still resumes as the right one. Empty when the login has
+    no config dir here; see resume_error()."""
     tok = e["sid"] if by_uuid or not title_of(e) else title_of(e)
-    cmd = 'claude --resume "%s"' % tok
+    try:
+        env = config_env(config_dir_for(account_of(e)))
+    except AccountError:
+        return ""
+    prefix = "" if env["CLAUDE_CONFIG_DIR"] == "" else "CLAUDE_CONFIG_DIR=%s " % shlex.quote(env["CLAUDE_CONFIG_DIR"])
+    cmd = '%sclaude --resume "%s"' % (prefix, tok)
     proj = project_of(e)
     return cmd if proj in (CODE_ROOT_SHORT, "?") else "cd %s && %s" % (proj, cmd)
+
+
+def resume_error(e):
+    try:
+        config_dir_for(account_of(e))
+    except AccountError as ex:
+        return str(ex)
+    return ""
 
 
 class AccountError(Exception):
@@ -350,6 +368,8 @@ def account_state(e):
 def launch_argv(e):
     """argv, cwd and env additions to resume this session under its own account.
     Always by uuid, so a shared name can never pick the wrong session."""
+    import config
+    config.refresh()
     cwd = e.get("cwd") or CODE_ROOT
     if not os.path.isdir(cwd):                     # the directory may be gone since
         cwd = CODE_ROOT if os.path.isdir(CODE_ROOT) else HOME
@@ -436,6 +456,8 @@ def is_active(e, now=None):
 
 def rows(cat, meta, threads, q=""):
     """Catalog entries shaped for the API/CLI, newest activity first."""
+    import config
+    config.refresh()
     terms = _terms(q)
     now = time.time()
     by_title = {}
@@ -474,6 +496,7 @@ def rows(cat, meta, threads, q=""):
             "days": len(e.get("days", [])), "last_reply": e.get("last_reply", ""),
             "threads": linked,
             "resume_cmd": resume_cmd(e), "resume_uuid_cmd": resume_cmd(e, by_uuid=True),
+            "resume_error": resume_error(e),
             "snippet": snip,
         })
     out.sort(key=lambda r: r["last"], reverse=True)

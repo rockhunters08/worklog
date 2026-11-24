@@ -100,3 +100,23 @@ def load(path=PATH):
 
 
 CFG = load()
+_loaded_at = os.path.getmtime(PATH) if os.path.exists(PATH) else 0
+
+
+def refresh():
+    """Re-read worklog.toml if it changed since it was loaded, updating CFG
+    in place so every importer sees the new accounts and launch settings
+    without a restart (`wl account add` edits the file while the server
+    runs). Paths derived at import time are not re-derived."""
+    global _loaded_at
+    try:
+        m = os.path.getmtime(PATH)
+    except OSError:
+        return False
+    if m == _loaded_at:
+        return False
+    fresh = load()
+    for k in ("accounts", "launch", "enrich", "catalog", "user", "github"):
+        CFG[k] = fresh[k]
+    _loaded_at = m
+    return True

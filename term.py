@@ -96,8 +96,10 @@ def open_in_terminal(sid, argv, cwd, env):
         tmpl = CFG["launch"]["command"]
         if not tmpl:
             raise RuntimeError("launch.terminal is 'command' but launch.command is empty")
+        penv = dict(os.environ)
+        penv.pop("CLAUDECODE", None)               # or the resumed claude refuses to nest
         subprocess.Popen(tmpl.format(cmd=shlex.quote(line), cwd=shlex.quote(cwd)), shell=True,
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=penv)
     else:
         raise RuntimeError("unknown launch.terminal %r" % how)
     return line

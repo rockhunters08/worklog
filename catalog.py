@@ -313,11 +313,12 @@ def account_of(e):
     return e.get("account") or CFG["accounts"]["default"]
 
 
+STOCK_CLAUDE_DIR = os.path.expanduser("~/.claude")
+
+
 def config_dir_for(email):
-    """CLAUDE_CONFIG_DIR for an account. The default login gets the default
-    dir explicitly, so a worklog started from an alternate-account shell
-    cannot leak that account into default sessions. Raises AccountError for a
-    recorded login with no mapping rather than silently using another one."""
+    """The config dir for an account. Raises AccountError for a recorded login
+    with no mapping rather than silently using another one."""
     email = (email or "").lower()
     if not email or email == CFG["accounts"]["default"]:
         return CFG["paths"]["claude_dir"]
@@ -325,6 +326,16 @@ def config_dir_for(email):
     if not d:
         raise AccountError("no config dir for %s; run `wl account add %s` or set accounts.default" % (email, email))
     return d
+
+
+def config_env(config_dir):
+    """CLAUDE_CONFIG_DIR to set for a config dir. Always set, so a worklog
+    started from an alternate-account shell cannot leak that account into
+    other sessions. The stock ~/.claude must be given as an EMPTY value: Claude
+    Code keys its keychain login by the variable, and naming the stock path
+    explicitly selects a different, logged-out entry."""
+    stock = os.path.realpath(config_dir) == os.path.realpath(STOCK_CLAUDE_DIR)
+    return {"CLAUDE_CONFIG_DIR": "" if stock else config_dir}
 
 
 def account_state(e):
@@ -342,7 +353,7 @@ def launch_argv(e):
     cwd = e.get("cwd") or CODE_ROOT
     if not os.path.isdir(cwd):                     # the directory may be gone since
         cwd = CODE_ROOT if os.path.isdir(CODE_ROOT) else HOME
-    env = {"CLAUDE_CONFIG_DIR": config_dir_for(account_of(e))}
+    env = config_env(config_dir_for(account_of(e)))
     return ["claude", "--resume", e["sid"]], cwd, env
 
 

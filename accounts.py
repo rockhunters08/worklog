@@ -13,11 +13,12 @@ resumes under the account it last ran with (catalog.account_of).
 """
 import json
 import os
+import shlex
 import subprocess
 
 from config import CFG, PATH as CONFIG_PATH
 
-DEFAULT_DIR = os.path.expanduser("~/.claude")
+DEFAULT_DIR = CFG["paths"]["claude_dir"]
 ACCOUNTS_ROOT = os.path.expanduser("~/.claude-accounts")
 # everything an account dir shares with the default one; anything Claude Code
 # creates later lands in the account dir itself, which is fine
@@ -30,25 +31,33 @@ def make_dir(alias):
     """Create ~/.claude-accounts/<alias> as a symlink farm over ~/.claude."""
     d = os.path.join(ACCOUNTS_ROOT, alias)
     os.makedirs(d, exist_ok=True)
+    # the shared transcript dir must exist before it is linked, or Claude makes
+    # a private one inside the account dir that the catalog never scans
+    os.makedirs(os.path.join(DEFAULT_DIR, "projects"), exist_ok=True)
     for name in SHARED:
         src, dst = os.path.join(DEFAULT_DIR, name), os.path.join(d, name)
         if os.path.exists(src) and not os.path.lexists(dst):
             os.symlink(src, dst)
-    # ~/.claude.json (mcp servers, per-project state) lives beside the dir, not in it
-    src, dst = os.path.expanduser("~/.claude.json"), os.path.join(d, ".claude.json")
+    src, dst = state_file(DEFAULT_DIR), os.path.join(d, ".claude.json")
     if os.path.exists(src) and not os.path.lexists(dst):
         os.symlink(src, dst)
     return d
 
 
+def state_file(config_dir):
+    """Claude Code's .claude.json (mcp servers, per-project state): beside the
+    stock ~/.claude, inside any other config dir."""
+    if os.path.realpath(config_dir) == os.path.realpath(os.path.expanduser("~/.claude")):
+        return os.path.expanduser("~/.claude.json")
+    return os.path.join(config_dir, ".claude.json")
+
+
 def status(config_dir=""):
-    """(logged_in, email) for a config dir ('' = the default one)."""
+    """(logged_in, email) for a config dir ('' = the configured default one)."""
+    import catalog
     env = dict(os.environ)
     env.pop("CLAUDECODE", None)
-    if config_dir:
-        env["CLAUDE_CONFIG_DIR"] = config_dir
-    else:
-        env.pop("CLAUDE_CONFIG_DIR", None)
+    env.update(catalog.config_env(config_dir or DEFAULT_DIR))
     try:
         r = subprocess.run(["claude", "auth", "status"], capture_output=True, text=True, env=env, timeout=30)
         d = json.loads(r.stdout)
@@ -58,7 +67,9 @@ def status(config_dir=""):
 
 
 def login_cmd(email, config_dir):
-    return "CLAUDE_CONFIG_DIR=%s claude auth login --email %s" % (config_dir, email)
+    import catalog
+    d = catalog.config_env(config_dir)["CLAUDE_CONFIG_DIR"]
+    return "CLAUDE_CONFIG_DIR=%s claude auth login --email %s" % (shlex.quote(d), shlex.quote(email))
 
 
 def record(email, config_dir):

@@ -130,6 +130,13 @@ def transcript(sid, name, ai_title, repos, prs, tickets, hours_ago, days, n_prom
 
 def main():
     os.makedirs(PROJ, exist_ok=True)
+    # the scanner reads only bytes appended since its last pass, so a
+    # regenerated transcript of the same size would never be reread
+    for stale in ("sessions-cache.json", "sessions-cache.json.tmp"):
+        try:
+            os.remove(os.path.join(OUT, stale))
+        except FileNotFoundError:
+            pass
     events = []
     threads = []
     for n, (name, label, auto, summary, outcome, tags, people, repos, prs, tickets, hours_ago, days, n_prompts) in enumerate(SESSIONS):

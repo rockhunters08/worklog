@@ -1106,7 +1106,7 @@ $("#modes").addEventListener("click", e => {
 async function pullSessions(force){
   const url = "/api/sessions?q=" + encodeURIComponent(SF.q) + (force ? "&rescan=1" : "");
   const txt = await (await fetch(url)).text();
-  if(txt === lastSess && !force) return;
+  if(txt === lastSess && !force){ if(termOnLoad) renderSessions(); return; }   // a #t/ link still needs its terminal
   lastSess = txt; SS = JSON.parse(txt);
   checkPage(SS);
   renderSessions();

@@ -131,8 +131,9 @@ def _recv_exact(sock, n):
 
 
 def read_frame(sock):
-    """(opcode, payload) of one client frame; clients always mask."""
+    """(fin, opcode, payload) of one client frame; clients always mask."""
     b1, b2 = _recv_exact(sock, 2)
+    fin = bool(b1 & 0x80)
     opcode = b1 & 0x0F
     masked = b2 & 0x80
     n = b2 & 0x7F
@@ -144,7 +145,7 @@ def read_frame(sock):
     data = _recv_exact(sock, n)
     if masked:
         data = bytes(c ^ mask[i % 4] for i, c in enumerate(data))
-    return opcode, data
+    return fin, opcode, data
 
 
 def send_frame(sock, data, opcode=2):
@@ -181,32 +182,58 @@ def serve_pty(sock, sid, argv, cwd, env, cols=120, rows=36):
             os._exit(127)
     set_winsize(fd, cols, rows)
     sock.setblocking(True)
+    # the master is non-blocking and input queues in `pending`, so a large
+    # paste can never block the loop while the child waits for us to drain
+    # its output; frames are reassembled so fragmented messages lose nothing
+    os.set_blocking(fd, False)
+    pending = b""
+    frag_op, frag = None, b""
     try:
         while True:
-            r, _, _ = select.select([fd, sock], [], [], 30)
+            r, w, _ = select.select([fd, sock], [fd] if pending else [], [], 30)
+            if fd in w and pending:
+                try:
+                    n = os.write(fd, pending)
+                    pending = pending[n:]
+                except BlockingIOError:
+                    pass
             if fd in r:
                 try:
                     data = os.read(fd, 65536)
+                except BlockingIOError:
+                    data = None
                 except OSError:
                     break
-                if not data:
+                if data == b"":
                     break
-                send_frame(sock, data, 2)
+                if data:
+                    send_frame(sock, data, 2)
             if sock in r:
-                opcode, data = read_frame(sock)
+                fin, opcode, data = read_frame(sock)
                 if opcode == 8:
                     break
                 if opcode == 9:
                     send_frame(sock, data, 10)
-                elif opcode == 2:
-                    os.write(fd, data)
-                elif opcode == 1:
+                    continue
+                if opcode in (1, 2):
+                    frag_op, frag = opcode, data
+                elif opcode == 0 and frag_op is not None:
+                    frag += data
+                else:
+                    continue
+                if not fin:
+                    continue
+                op, msg = frag_op, frag
+                frag_op, frag = None, b""
+                if op == 2:
+                    pending += msg
+                elif op == 1:
                     try:
-                        msg = json.loads(data.decode())
+                        ctl = json.loads(msg.decode())
                     except ValueError:
                         continue
-                    if "resize" in msg:
-                        c, rw = msg["resize"]
+                    if "resize" in ctl:
+                        c, rw = ctl["resize"]
                         set_winsize(fd, max(20, int(c)), max(5, int(rw)))
                         os.kill(pid, signal.SIGWINCH)
     except (ConnectionError, OSError):

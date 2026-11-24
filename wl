@@ -9,6 +9,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import catalog
+import term
 from config import CFG
 from store import (LOG, MD, OPEN, PRIOS, STATUSES, append, csv, cur_session,
                    due_state, handoff, load, next_id, now, resume_cmd, session_meta,
@@ -334,9 +335,15 @@ def cmd_session(a):
         print("threads  : %s" % " ".join(r["threads"]))
     print("activity : %s .. %s  (%d prompts, %d KB)" % (short(r["created"]), short(r["last"]),
                                                        r["n_prompts"], r["size"] // 1024))
-    print("resume   : %s" % r["resume_cmd"])
-    if r["title"]:
-        print("by uuid  : %s" % r["resume_uuid_cmd"])
+    print("account  : %s%s" % (r["account"] or "(default)",
+          "" if r["account_known"] else "  (not recorded; default assumed)") +
+          ("  NO CONFIG DIR: run `wl account add %s`" % r["account"] if r["account_state"] == "unmapped" else ""))
+    if r["resume_error"]:
+        print("resume   : (none) %s" % r["resume_error"])
+    else:
+        print("resume   : %s" % r["resume_cmd"])
+        if r["title"]:
+            print("by uuid  : %s" % r["resume_uuid_cmd"])
     if r["shared"]:
         print("NOTE     : %d other session%s carry the name %r; by-name resume picks one of them"
               % (r["shared"], "" if r["shared"] == 1 else "s", r["title"]))
@@ -359,6 +366,47 @@ def cmd_label(a):
         sys.exit("wl: give a label, --tag or --note")
     append({"op": "smeta", "sid": e["sid"], "fields": fields})
     print("%s  %s" % (e["sid"][:8], "  ".join("%s = %s" % (k, v) for k, v in fields.items())))
+
+
+def cmd_launch(a):
+    """Open the session in the configured terminal, under its own account."""
+    cat = catalog.scan()
+    e = pick_session(cat, a.key)
+    try:
+        argv, cwd, env = catalog.launch_argv(e)
+    except catalog.AccountError as ex:
+        sys.exit("wl: %s" % ex)
+    if a.print_only:
+        argv, cwd, env = term.wrapped_argv(e["sid"], argv, cwd, env)
+        print(term.shell_cmd(argv, cwd, env))
+        return
+    line = term.open_in_terminal(e["sid"], argv, cwd, env)
+    print("%s  opened in %s%s\n  %s" % (e["sid"][:8], CFG["launch"]["terminal"],
+                                         " (tmux %s)" % term.tmux_name(e["sid"]) if term.tmux() else "", line))
+
+
+def cmd_account(a):
+    import accounts
+    if a.what == "ls":
+        for x in accounts.listing():
+            print("%-32s %-9s %s%s" % (x["email"] or "(unknown)", "ok" if x["logged_in"] else "LOGGED OUT",
+                                       x["dir"], "  (default)" if x["default"] else
+                                       ("  logged in as %s" % x["actual"] if x["actual"] and x["actual"] != x["email"] else "")))
+        return
+    if a.what == "add":
+        if not a.email:
+            sys.exit("wl account add <email> [alias]")
+        alias = a.alias or a.email.replace("@", "-at-").replace("+", "-")
+        d = os.path.join(accounts.ACCOUNTS_ROOT, alias)
+        try:
+            accounts.record(a.email, d)             # validate before touching the filesystem
+        except ValueError as ex:
+            sys.exit("wl: %s" % ex)
+        accounts.make_dir(alias)
+        print("account dir %s (symlinks over ~/.claude); recorded in %s" % (d, accounts.CONFIG_PATH))
+        print("now log it in, once:\n\n  %s\n" % accounts.login_cmd(a.email, d))
+        return
+    sys.exit("wl account ls | add <email> [alias]")
 
 
 def cmd_rm(a):
@@ -482,6 +530,17 @@ def main():
     lb.add_argument("-t", "--tag", help="comma-separated tags")
     lb.add_argument("-n", "--note")
     lb.set_defaults(fn=cmd_label)
+
+    la = sub.add_parser("launch", help="open a catalog session in your terminal, under its own account")
+    la.add_argument("key")
+    la.add_argument("-p", "--print", dest="print_only", action="store_true", help="print the shell line instead")
+    la.set_defaults(fn=cmd_launch)
+
+    ac = sub.add_parser("account", help="ls | add <email> [alias]: Claude logins the catalog can resume under")
+    ac.add_argument("what", choices=["ls", "add"])
+    ac.add_argument("email", nargs="?")
+    ac.add_argument("alias", nargs="?")
+    ac.set_defaults(fn=cmd_account)
 
     md = sub.add_parser("md", help="regenerate WORKLOG.md")
     md.set_defaults(fn=cmd_md)

@@ -13,6 +13,7 @@ import glob
 import json
 import os
 import re
+import shlex
 import threading
 import time
 
@@ -21,7 +22,7 @@ from config import CFG
 HERE = os.path.dirname(os.path.realpath(__file__))
 PROJECTS = CFG["paths"]["projects"]
 CODE_ROOT = CFG["paths"]["code_root"]
-CACHE = os.path.join(HERE, "sessions-cache.json")
+CACHE = CFG["paths"]["cache"]
 HOME = os.path.expanduser("~")
 
 PROMPT_CHARS = 400     # per prompt kept for search
@@ -38,7 +39,7 @@ def _empty(sid, path):
             "cwd": "", "size": 0, "mtime": 0, "offset": 0, "created": "", "last": "",
             "titles": [], "ai_title": "", "summary": "", "first_prompt": "",
             "n_prompts": 0, "prompts": [], "branch": "", "prs": [], "repos": {},
-            "issues": [], "days": [], "last_reply": ""}
+            "issues": [], "days": [], "last_reply": "", "account": ""}
 
 
 def _text(content):
@@ -51,6 +52,7 @@ def _text(content):
 
 
 _REMINDER = re.compile(r"<system-reminder>.*?</system-reminder>", re.S)
+_EMAIL = re.compile(rb'"userEmail":"The user\'s email address is ([^\s"\\]+?)\.?[\s"\\]')
 _CODE_PATH = re.compile(rb'"file_path":\s*"' + re.escape(CODE_ROOT.encode()) + rb'/([A-Za-z0-9_.-]+)/')
 _ISSUE = re.compile("|".join("(?:%s)" % p for p in CFG["tickets"]["patterns"]))
 
@@ -91,6 +93,11 @@ def _parse(entry, fh):
                 continue
             if r.get("type") == "ai-title" and r.get("aiTitle"):
                 entry["ai_title"] = r["aiTitle"]
+            continue
+        if b'"userEmail"' in line:
+            m = _EMAIL.search(line)
+            if m:
+                entry["account"] = m.group(1).decode().lower()   # last one wins: the login it last ran under
             continue
         if b'"pr-link"' in line:
             try:
@@ -198,7 +205,8 @@ def scan(progress=None):
         except OSError:
             continue
         e = cat.get(sid)
-        if e is None or e.get("path") != path or st.st_size < e.get("offset", 0):
+        if e is None or e.get("path") != path or st.st_size < e.get("offset", 0) \
+                or "account" not in e:                 # cache written before a field existed: reread
             e = _empty(sid, path)
         if st.st_size > e["offset"] or st.st_mtime != e["mtime"]:
             try:
@@ -291,10 +299,82 @@ def is_tiny(e):
 
 
 def resume_cmd(e, by_uuid=False):
+    """The copyable command. Carries the account's CLAUDE_CONFIG_DIR when the
+    session ran under a non-default login, so pasting it into another
+    account's shell still resumes as the right one. Empty when the login has
+    no config dir here; see resume_error()."""
     tok = e["sid"] if by_uuid or not title_of(e) else title_of(e)
-    cmd = 'claude --resume "%s"' % tok
+    try:
+        env = config_env(config_dir_for(account_of(e)))
+    except AccountError:
+        return ""
+    prefix = "" if env["CLAUDE_CONFIG_DIR"] == "" else "CLAUDE_CONFIG_DIR=%s " % shlex.quote(env["CLAUDE_CONFIG_DIR"])
+    cmd = '%sclaude --resume "%s"' % (prefix, tok)
     proj = project_of(e)
     return cmd if proj in (CODE_ROOT_SHORT, "?") else "cd %s && %s" % (proj, cmd)
+
+
+def resume_error(e):
+    try:
+        config_dir_for(account_of(e))
+    except AccountError as ex:
+        return str(ex)
+    return ""
+
+
+class AccountError(Exception):
+    """A session recorded a login this machine has no config dir for."""
+
+
+def account_of(e):
+    """The login the session last ran under, else the configured default."""
+    return e.get("account") or CFG["accounts"]["default"]
+
+
+STOCK_CLAUDE_DIR = os.path.expanduser("~/.claude")
+
+
+def config_dir_for(email):
+    """The config dir for an account. Raises AccountError for a recorded login
+    with no mapping rather than silently using another one."""
+    email = (email or "").lower()
+    if not email or email == CFG["accounts"]["default"]:
+        return CFG["paths"]["claude_dir"]
+    d = CFG["accounts"]["dirs"].get(email)
+    if not d:
+        raise AccountError("no config dir for %s; run `wl account add %s` or set accounts.default" % (email, email))
+    return d
+
+
+def config_env(config_dir):
+    """CLAUDE_CONFIG_DIR to set for a config dir. Always set, so a worklog
+    started from an alternate-account shell cannot leak that account into
+    other sessions. The stock ~/.claude must be given as an EMPTY value: Claude
+    Code keys its keychain login by the variable, and naming the stock path
+    explicitly selects a different, logged-out entry."""
+    stock = os.path.realpath(config_dir) == os.path.realpath(STOCK_CLAUDE_DIR)
+    return {"CLAUDE_CONFIG_DIR": "" if stock else config_dir}
+
+
+def account_state(e):
+    """'default' | 'mapped' | 'unmapped' for the UI and CLI."""
+    try:
+        config_dir_for(account_of(e))
+    except AccountError:
+        return "unmapped"
+    return "mapped" if e.get("account") and e["account"] != CFG["accounts"]["default"] else "default"
+
+
+def launch_argv(e):
+    """argv, cwd and env additions to resume this session under its own account.
+    Always by uuid, so a shared name can never pick the wrong session."""
+    import config
+    config.refresh()
+    cwd = e.get("cwd") or CODE_ROOT
+    if not os.path.isdir(cwd):                     # the directory may be gone since
+        cwd = CODE_ROOT if os.path.isdir(CODE_ROOT) else HOME
+    env = config_env(config_dir_for(account_of(e)))
+    return ["claude", "--resume", e["sid"]], cwd, env
 
 
 _PR = re.compile(r"^https://github\.com/([^/]+)/([^/]+)/pull/(\d+)$")
@@ -376,6 +456,8 @@ def is_active(e, now=None):
 
 def rows(cat, meta, threads, q=""):
     """Catalog entries shaped for the API/CLI, newest activity first."""
+    import config
+    config.refresh()
     terms = _terms(q)
     now = time.time()
     by_title = {}
@@ -400,6 +482,9 @@ def rows(cat, meta, threads, q=""):
             "created": e.get("created", ""), "last": e.get("last", ""),
             "size": e.get("size", 0), "path": e.get("path", ""),
             "tiny": is_tiny(e), "active": is_active(e, now),
+            "account": account_of(e), "account_known": bool(e.get("account")),
+            "account_state": account_state(e),
+            "account_dir": CFG["accounts"]["dirs"].get(account_of(e), ""), "cwd": e.get("cwd") or CODE_ROOT,
             "shared": len(by_title.get(t, [])) - 1 if t else 0,
             "label": m.get("label", ""), "auto_label": m.get("auto_label", ""),
             "tags": m.get("tags", []), "note": m.get("note", ""),
@@ -411,6 +496,7 @@ def rows(cat, meta, threads, q=""):
             "days": len(e.get("days", [])), "last_reply": e.get("last_reply", ""),
             "threads": linked,
             "resume_cmd": resume_cmd(e), "resume_uuid_cmd": resume_cmd(e, by_uuid=True),
+            "resume_error": resume_error(e),
             "snippet": snip,
         })
     out.sort(key=lambda r: r["last"], reverse=True)

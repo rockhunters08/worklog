@@ -137,6 +137,61 @@ By hand:
 
 Your own label, tags and note are never touched by it.
 
+## Terminals
+
+Every session row has a **term** chip, and the expanded row has **terminal
+here** and **open in Terminal**. Both resume the session by uuid, in the
+directory it ran from, under the account it last ran with (below).
+
+- **terminal here** opens a terminal in a dock at the bottom of the page, one
+  tab per session, so you can flip between your running sessions without
+  leaving the catalog. Drag the dock's top edge to resize it, the arrows to
+  fill the window. `#t/<uuid>` deep-links a session with its terminal open.
+- **open in Terminal** opens the same session in your terminal application:
+  macOS Terminal.app by default, iTerm with `launch.terminal = "iTerm"`, or any
+  other with `launch.terminal = "command"` and a `launch.command` template that
+  gets `{cmd}` and `{cwd}`, for example `open -na Ghostty --args -e {cmd}`.
+- With **tmux** installed (`brew install tmux`) a session's terminal is a tmux
+  session named `wl-<uuid prefix>`, and the page, your terminal app and a plain
+  `tmux attach` all reach the same running `claude`. Closing a tab or window
+  only detaches; opening the session again reattaches. Without tmux the page
+  gets a bare pty and closing the tab ends the conversation. `launch.tmux =
+  false` turns the wrapping off.
+- `./wl launch <session>` does the same from a shell; `-p` prints the command
+  instead.
+
+The in-page terminal is xterm.js (vendored under `static/`) over a WebSocket to
+a pty; the WebSocket server is a few dozen lines in `term.py`, so the app is
+still standard-library only.
+
+## Accounts
+
+Claude Code keeps one login per config directory, so running sessions under
+several accounts means one `CLAUDE_CONFIG_DIR` per account. Each transcript
+records the login it ran under, and the catalog resumes a session with that
+one; sessions from before that was recorded use `accounts.default`.
+
+```bash
+./wl account add you+work@example.com work   # ~/.claude-accounts/work, recorded in worklog.toml
+CLAUDE_CONFIG_DIR=~/.claude-accounts/work claude auth login --email you+work@example.com
+./wl account ls                              # every account and whether it is logged in
+```
+
+An account directory is a set of symlinks back into `~/.claude` (projects,
+settings, skills, memory, and so on), so every account sees the same
+transcripts and configuration; only the login differs. The expanded row shows
+which account a session will resume under.
+
+## Security of the spawn endpoints
+
+The page is a browser tab, and other sites open in the same browser can send
+requests to `127.0.0.1`. Anything that runs a command (`launch`, the terminal
+WebSocket) therefore requires a token minted when the server starts and
+injected into the page: another origin can request the page but cannot read
+it, so it never sees the token. Requests carrying an `Origin` header from
+anywhere but the server's own address are refused regardless. The server still
+binds to 127.0.0.1 only.
+
 ## Threads
 
 The **threads** switch under the masthead is a tracker for work that outlives

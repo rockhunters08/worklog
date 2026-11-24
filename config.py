@@ -10,6 +10,8 @@ PATH = os.environ.get("WL_CONFIG", os.path.join(HERE, "worklog.toml"))
 
 DEFAULTS = {
     "paths": {
+        # the default Claude Code config dir (its login is accounts.default)
+        "claude_dir": "~/.claude",
         # where Claude Code keeps transcripts; one directory per project
         "projects": "~/.claude/projects",
         # sessions started under here are resumed without a `cd` prefix, and
@@ -17,8 +19,26 @@ DEFAULTS = {
         "code_root": "~/code",
         # the append-only event log; relative paths are taken from this directory
         "log": "worklog.jsonl",
+        # the scanned-transcript cache, rebuilt on demand
+        "cache": "sessions-cache.json",
     },
     "server": {"port": 8787},
+    "launch": {
+        # how "open in terminal" starts a session: "Terminal" (macOS Terminal.app),
+        # "iTerm", or "command" to run `command` with {cmd} and {cwd} substituted
+        "terminal": "Terminal",
+        "command": "",
+        # keep sessions inside tmux (when installed) so a closed window or tab
+        # detaches instead of ending the conversation
+        "tmux": True,
+    },
+    "accounts": {
+        # the login in the default config dir (~/.claude); shown when a session
+        # has no account recorded
+        "default": "",
+        # email -> CLAUDE_CONFIG_DIR for every other login, see `wl account add`
+        "dirs": {},
+    },
     "catalog": {
         # a session with activity inside this window shows as active
         "active_hours": 24,
@@ -68,11 +88,35 @@ def load(path=PATH):
         with open(path, "rb") as f:
             _merge(cfg, tomllib.load(f))
     p = cfg["paths"]
+    p["claude_dir"] = os.path.expanduser(p["claude_dir"]).rstrip("/")
     p["projects"] = os.path.expanduser(p["projects"])
     p["code_root"] = os.path.expanduser(p["code_root"]).rstrip("/")
     p["log"] = os.environ.get("WL_LOG") or os.path.join(HERE, os.path.expanduser(p["log"]))
+    p["cache"] = os.path.join(HERE, os.path.expanduser(p["cache"]))
     cfg["user"]["names"] = {n.strip().lower() for n in cfg["user"]["names"] if n.strip()}
+    cfg["accounts"]["dirs"] = {k.lower(): os.path.expanduser(v) for k, v in cfg["accounts"]["dirs"].items()}
+    cfg["accounts"]["default"] = cfg["accounts"]["default"].lower()
     return cfg
 
 
 CFG = load()
+_loaded_at = os.path.getmtime(PATH) if os.path.exists(PATH) else 0
+
+
+def refresh():
+    """Re-read worklog.toml if it changed since it was loaded, updating CFG
+    in place so every importer sees the new accounts and launch settings
+    without a restart (`wl account add` edits the file while the server
+    runs). Paths derived at import time are not re-derived."""
+    global _loaded_at
+    try:
+        m = os.path.getmtime(PATH)
+    except OSError:
+        return False
+    if m == _loaded_at:
+        return False
+    fresh = load()
+    for k in ("accounts", "launch", "enrich", "catalog", "user", "github"):
+        CFG[k] = fresh[k]
+    _loaded_at = m
+    return True

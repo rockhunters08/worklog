@@ -493,7 +493,7 @@ body[data-mode="threads"] .sessions-only{display:none !important}
     <div class="docktabs" id="docktabs"></div>
     <span class="acct" id="dockacct"></span>
     <button class="dk" data-dock="max" title="toggle full height">&#8597;</button>
-    <button class="dk" data-dock="close" title="hide the dock; sessions keep running in tmux">hide</button>
+    <button class="dk" data-dock="close" title="hide the dock; the tabs and their sessions stay as they are">hide</button>
   </div>
   <div id="dockbody"></div>
 </div>
@@ -1470,10 +1470,11 @@ function closeTerm(sid, keepDock){
   if(left.length) activateTerm(left[left.length-1], false); else hideDock();
 }
 function hideDock(){
+  // hiding is not closing: tabs and their connections stay, and any term
+  // button brings the dock back with them
   const d = $("#dock");
   d.hidden = true; d.classList.remove("max"); d.style.height = ""; delete d.dataset.h;
   document.body.classList.remove("docked"); document.body.style.paddingBottom = "";
-  for(const sid of Object.keys(TERMS)) closeTerm(sid);
 }
 function renderDock(){
   $("#docktabs").innerHTML = Object.entries(TERMS).map(([sid, t]) =>

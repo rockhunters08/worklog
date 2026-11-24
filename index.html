@@ -1235,7 +1235,9 @@ function renderSessions(){
     html += sessionRow(r);
   }
   $("#slist").innerHTML = html;
-  if(termOnLoad){ const r = SS.items.find(x => x.sid === termOnLoad); termOnLoad = null; if(r) openTerm(r); }
+  if(termOnLoad){ const r = SS.items.find(x => x.sid === termOnLoad);
+    if(r){ termOnLoad = null; openTerm(r); }
+    else if(!SS.scanning){ termOnLoad = null; toast("no session with that id"); } }   // keep waiting during the first scan
   if(openSid && scrollOnce){ scrollOnce = false;
     const el = document.querySelector(`.thread[data-sid="${openSid}"]`);
     if(el) el.scrollIntoView({block:"start"}); }
@@ -1451,11 +1453,11 @@ function openTerm(r){
   term.onResize(({cols, rows}) => { if(ws.readyState === 1) ws.send(JSON.stringify({resize:[cols, rows]})); });
   term.focus();
 }
-function activateTerm(sid){
+function activateTerm(sid, focus = true){
   dockOn = sid;
   for(const [k, t] of Object.entries(TERMS)) t.el.classList.toggle("on", k === sid);
   renderDock();
-  const t = TERMS[sid]; if(t){ requestAnimationFrame(() => { t.fit.fit(); t.term.focus(); }); }
+  const t = TERMS[sid]; if(t){ requestAnimationFrame(() => { t.fit.fit(); if(focus) t.term.focus(); }); }
 }
 function closeTerm(sid, keepDock){
   const t = TERMS[sid]; if(!t) return;
@@ -1463,7 +1465,9 @@ function closeTerm(sid, keepDock){
   t.term.dispose(); t.el.remove(); delete TERMS[sid];
   if(keepDock) return;
   const left = Object.keys(TERMS);
-  if(left.length) activateTerm(left[left.length-1]); else hideDock();
+  // show the next tab but do not steal focus into it: keystrokes meant for
+  // the closed session must not land in another one
+  if(left.length) activateTerm(left[left.length-1], false); else hideDock();
 }
 function hideDock(){
   const d = $("#dock");
